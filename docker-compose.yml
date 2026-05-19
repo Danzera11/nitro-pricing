@@ -1,0 +1,59 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-powerquote}
+      POSTGRES_USER: ${POSTGRES_USER:-powerquote}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-powerquote_dev_password}
+    ports:
+      - "5432:5432"
+    volumes:
+      - powerquote_postgres:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-powerquote} -d ${POSTGRES_DB:-powerquote}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  api:
+    build:
+      context: .
+      dockerfile: docker/api.Dockerfile
+    env_file:
+      - .env
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER:-powerquote}:${POSTGRES_PASSWORD:-powerquote_dev_password}@postgres:5432/${POSTGRES_DB:-powerquote}?schema=public
+      PORT: 3000
+    depends_on:
+      postgres:
+        condition: service_healthy
+    ports:
+      - "${API_PORT:-3000}:3000"
+    labels:
+      - "traefik.enable=${TRAEFIK_ENABLE:-false}"
+      - "traefik.http.routers.powerquote-api.rule=Host(`${POWERQUOTE_API_HOST:-api.powerquote.localhost}`)"
+      - "traefik.http.services.powerquote-api.loadbalancer.server.port=3000"
+
+  web:
+    build:
+      context: .
+      dockerfile: docker/web.Dockerfile
+      args:
+        VITE_API_URL: ${VITE_API_URL:-http://localhost:3000}
+    depends_on:
+      - api
+    ports:
+      - "${WEB_PORT:-5173}:80"
+    labels:
+      - "traefik.enable=${TRAEFIK_ENABLE:-false}"
+      - "traefik.http.routers.powerquote-web.rule=Host(`${POWERQUOTE_WEB_HOST:-powerquote.localhost}`)"
+      - "traefik.http.services.powerquote-web.loadbalancer.server.port=80"
+
+  redis:
+    image: redis:7-alpine
+    profiles: ["redis"]
+    ports:
+      - "6379:6379"
+
+volumes:
+  powerquote_postgres:

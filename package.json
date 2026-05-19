@@ -1,0 +1,19 @@
+{
+  "name": "powerquote-ai",
+  "private": true,
+  "version": "0.1.0",
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "dev": "npm run dev -w @powerquote/api & npm run dev -w @powerquote/web",
+    "build": "npm run build -w @powerquote/shared && npm run build -w @powerquote/api && npm run build -w @powerquote/web",
+    "lint": "npm run lint -w @powerquote/api && npm run lint -w @powerquote/web",
+    "prisma:migrate": "npm run prisma:migrate -w @powerquote/api",
+    "prisma:seed": "npm run prisma:seed -w @powerquote/api"
+  },
+  "devDependencies": {
+    "typescript": "^5.4.5"
+  }
+}
