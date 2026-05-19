@@ -142,7 +142,7 @@ cd nitro-pricing
 3. Crie o `.env`:
 
 ```bash
-cp .env.example .env
+cp .env.vm.example .env
 ```
 
 4. Edite obrigatoriamente:
@@ -154,27 +154,39 @@ LOCAL_ADMIN_PASSWORD=<senha-forte>
 LOCAL_USER_PASSWORD=<senha-forte>
 POSTGRES_PASSWORD=<senha-forte-do-banco>
 VITE_API_URL=http://IP_DA_VM:3000
+WEB_ORIGIN=http://IP_DA_VM:5173
 WEB_PORT=5173
 API_PORT=3000
 ```
 
-5. Suba a stack:
+5. Suba a stack de VM:
 
 ```bash
-docker compose up -d --build
+docker compose -f docker-compose.vm.yml up -d --build
 ```
 
-6. Aplique migrations e seed inicial:
+6. Aplique migrations:
 
 ```bash
-docker compose exec api npx prisma migrate deploy -w @powerquote/api
-docker compose exec api npm run prisma:seed
+docker compose -f docker-compose.vm.yml exec api npx prisma migrate deploy --schema=apps/api/prisma/schema.prisma
 ```
 
-7. Acesse:
+7. Rode o seed inicial apenas no primeiro deploy ou quando quiser recriar dados base:
+
+```bash
+docker compose -f docker-compose.vm.yml exec api npm run prisma:seed
+```
+
+8. Acesse:
 
 - Web: `http://IP_DA_VM:5173`
 - API: `http://IP_DA_VM:3000/api`
+
+Atalho equivalente:
+
+```bash
+sh scripts/vm-up.sh
+```
 
 Volumes persistentes:
 
@@ -185,9 +197,27 @@ Para atualizar:
 
 ```bash
 git pull
-docker compose up -d --build
-docker compose exec api npx prisma migrate deploy -w @powerquote/api
+sh scripts/vm-up.sh
 ```
+
+Backup manual do banco:
+
+```bash
+sh scripts/vm-backup-db.sh
+```
+
+Logs:
+
+```bash
+sh scripts/vm-logs.sh
+```
+
+Observações de segurança para a VM:
+
+- Não exponha a porta `5432` do Postgres. O override `docker-compose.vm.yml` remove o publish externo.
+- Libere no firewall apenas as portas escolhidas para web/API, por padrão `5173` e `3000`.
+- Troque `LOCAL_AUTH_SECRET`, `POSTGRES_PASSWORD`, `LOCAL_ADMIN_PASSWORD` e `LOCAL_USER_PASSWORD` antes de uso real.
+- Para teste inicial, o usuário padrão continua `admin` / `vgbrvx2ddm`; depois redefina pela tela **Usuários**.
 
 ## IA
 

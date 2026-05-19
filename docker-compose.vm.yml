@@ -1,0 +1,67 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-powerquote}
+      POSTGRES_USER: ${POSTGRES_USER:-powerquote}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    volumes:
+      - powerquote_postgres:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-powerquote} -d ${POSTGRES_DB:-powerquote}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  api:
+    build:
+      context: .
+      dockerfile: docker/api.Dockerfile
+    restart: unless-stopped
+    environment:
+      NODE_ENV: production
+      DATABASE_URL: postgresql://${POSTGRES_USER:-powerquote}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-powerquote}?schema=public
+      PORT: 3000
+      STORAGE_DIR: /app/apps/api/storage
+      WEB_ORIGIN: ${WEB_ORIGIN}
+      AUTH_MODE: ${AUTH_MODE:-local}
+      LOCAL_AUTH_SECRET: ${LOCAL_AUTH_SECRET}
+      LOCAL_AUTH_TOKEN_TTL: ${LOCAL_AUTH_TOKEN_TTL:-12h}
+      LOCAL_ADMIN_USERNAME: ${LOCAL_ADMIN_USERNAME:-admin}
+      LOCAL_ADMIN_EMAIL: ${LOCAL_ADMIN_EMAIL:-admin@nitro.local}
+      LOCAL_ADMIN_PASSWORD: ${LOCAL_ADMIN_PASSWORD}
+      LOCAL_ADMIN_NAME: ${LOCAL_ADMIN_NAME:-Administrador Nitro}
+      LOCAL_ADMIN_ROLES: ${LOCAL_ADMIN_ROLES:-admin}
+      LOCAL_USER_USERNAME: ${LOCAL_USER_USERNAME:-editor}
+      LOCAL_USER_EMAIL: ${LOCAL_USER_EMAIL:-editor@nitro.local}
+      LOCAL_USER_PASSWORD: ${LOCAL_USER_PASSWORD}
+      LOCAL_USER_NAME: ${LOCAL_USER_NAME:-Editor Nitro}
+      LOCAL_USER_ROLES: ${LOCAL_USER_ROLES:-editor}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      OPENAI_MODEL: ${OPENAI_MODEL:-gpt-4.1-mini}
+      KEYCLOAK_ISSUER_URL: ${KEYCLOAK_ISSUER_URL:-}
+      KEYCLOAK_AUDIENCE: ${KEYCLOAK_AUDIENCE:-}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    ports:
+      - "${API_PORT:-3000}:3000"
+    volumes:
+      - powerquote_api_storage:/app/apps/api/storage
+
+  web:
+    build:
+      context: .
+      dockerfile: docker/web.Dockerfile
+      args:
+        VITE_API_URL: ${VITE_API_URL}
+    restart: unless-stopped
+    depends_on:
+      - api
+    ports:
+      - "${WEB_PORT:-5173}:80"
+
+volumes:
+  powerquote_postgres:
+  powerquote_api_storage:
