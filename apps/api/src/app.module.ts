@@ -2,6 +2,7 @@ import { Module } from "@nestjs/common";
 import { ConfigModule } from "@nestjs/config";
 import { APP_GUARD } from "@nestjs/core";
 import { AiModule } from "./ai/ai.module";
+import { AiLearningModule } from "./ai-learning/ai-learning.module";
 import { AiPromptsModule } from "./ai-prompts/ai-prompts.module";
 import { AuditModule } from "./audit/audit.module";
 import { AuthModule } from "./auth/auth.module";
@@ -37,6 +38,7 @@ import { VariablesModule } from "./variables/variables.module";
     RulesModule,
     QuoteRequestsModule,
     QuotesModule,
+    AiLearningModule,
     AiPromptsModule,
     AiModule
   ],

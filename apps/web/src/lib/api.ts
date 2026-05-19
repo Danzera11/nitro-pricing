@@ -109,5 +109,18 @@ export type QuoteRequest = {
   createdAt: string;
 };
 export type AiPrompt = { id: string; name: string; content: string; active: boolean; version: number; updatedAt: string };
+export type AiLearning = {
+  id: string;
+  title: string;
+  content: string;
+  status: "PENDING" | "APPROVED" | "REJECTED";
+  active: boolean;
+  source: string;
+  sourceQuoteId?: string;
+  evidenceJson?: unknown;
+  reviewedAt?: string;
+  createdAt: string;
+  updatedAt: string;
+};
 export type AuthUser = { id?: string; username?: string; name: string; email: string; roles: string[]; active?: boolean };
 export type LoginResponse = { accessToken: string; user: AuthUser };

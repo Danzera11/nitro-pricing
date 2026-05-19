@@ -1,6 +1,7 @@
 import { Body, Controller, Delete, Get, Param, Patch, Post, Res } from "@nestjs/common";
 import { Prisma, QuoteStatus } from "@prisma/client";
 import { Response } from "express";
+import { AiLearningService } from "../ai-learning/ai-learning.service";
 import { CurrentUser } from "../auth/current-user.decorator";
 import { Roles } from "../auth/roles.decorator";
 import { AuthenticatedUser } from "../auth/types";
@@ -32,7 +33,8 @@ type QuoteMaterialRecord = Required<Pick<QuoteMaterialDto, "id" | "name" | "quan
 export class QuotesController {
   constructor(
     private readonly prisma: PrismaService,
-    private readonly audit: AuditService
+    private readonly audit: AuditService,
+    private readonly learning: AiLearningService
   ) {}
 
   @Get(":id")
@@ -150,6 +152,7 @@ export class QuotesController {
     });
     await this.recalculateQuoteTotal(quoteId);
     await this.audit.record({ actor: user, entity: "quoteItem", entityId: record.id, action: "create", afterJson: record });
+    await this.captureQuoteLearning(quoteId, "Serviço adicionado manualmente", `Ao revisar um orçamento, foi adicionado o serviço "${record.serviceName}" no grupo ${record.groupCode}, com quantidade ${record.quantity} ${record.unit} e valor unitário de mão de obra ${record.unitLaborPrice}.`, { action: "create_service", after: record });
     return record;
   }
 
@@ -174,6 +177,7 @@ export class QuotesController {
     });
     await this.recalculateQuoteTotal(quoteId);
     await this.audit.record({ actor: user, entity: "quoteItem", entityId: itemId, action: "update", beforeJson: before, afterJson: record });
+    await this.captureQuoteLearning(quoteId, "Serviço ajustado na revisão", `Ao revisar um orçamento, o serviço "${record.serviceName}" foi ajustado. Considere esse padrão quando escopos semelhantes aparecerem, validando quantidade, unidade, dificuldade e valor de mão de obra.`, { action: "update_service", before, after: record });
     return record;
   }
 
@@ -184,6 +188,7 @@ export class QuotesController {
     const record = await this.prisma.quoteItem.delete({ where: { id: itemId } });
     await this.recalculateQuoteTotal(quoteId);
     await this.audit.record({ actor: user, entity: "quoteItem", entityId: itemId, action: "delete", beforeJson: before });
+    await this.captureQuoteLearning(quoteId, "Serviço removido na revisão", `Ao revisar um orçamento, o serviço "${before.serviceName}" foi removido. Em escopos semelhantes, confirme se esse serviço é realmente necessário antes de sugerir.`, { action: "delete_service", before });
     return record;
   }
 
@@ -199,6 +204,7 @@ export class QuotesController {
       include: { request: { include: { customer: true } }, items: { orderBy: { sortOrder: "asc" } } }
     });
     await this.audit.record({ actor: user, entity: "quoteMaterial", entityId: record.id, action: "create", afterJson: record });
+    await this.captureQuoteLearning(quoteId, "Material sugerido manualmente", `Ao revisar um orçamento, foi incluído o material "${record.name}" como ${record.status ?? "recomendado"}, com quantidade ${record.quantity} ${record.unit}. Materiais não têm preço e devem aparecer apenas como sugestão técnica.`, { action: "create_material", after: record });
     return updated;
   }
 
@@ -221,6 +227,7 @@ export class QuotesController {
       include: { request: { include: { customer: true } }, items: { orderBy: { sortOrder: "asc" } } }
     });
     await this.audit.record({ actor: user, entity: "quoteMaterial", entityId: before.id, action: "update", beforeJson: before, afterJson: materials[index] });
+    await this.captureQuoteLearning(quoteId, "Material ajustado na revisão", `Ao revisar um orçamento, o material "${materials[index].name}" foi ajustado. Use esse padrão para melhorar quantidades, unidade, obrigatoriedade e justificativa técnica em escopos semelhantes.`, { action: "update_material", before, after: materials[index] });
     return updated;
   }
 
@@ -237,7 +244,18 @@ export class QuotesController {
       include: { request: { include: { customer: true } }, items: { orderBy: { sortOrder: "asc" } } }
     });
     await this.audit.record({ actor: user, entity: "quoteMaterial", entityId: before.id, action: "delete", beforeJson: before });
+    await this.captureQuoteLearning(quoteId, "Material removido na revisão", `Ao revisar um orçamento, o material "${before.name}" foi removido. Em escopos semelhantes, confirme se esse material deve mesmo ser sugerido antes de incluir.`, { action: "delete_material", before });
     return updated;
+  }
+
+  private async captureQuoteLearning(quoteId: string, title: string, content: string, evidenceJson: Prisma.InputJsonValue) {
+    await this.learning.captureCandidate({
+      title,
+      content,
+      source: "quote_correction",
+      sourceQuoteId: quoteId,
+      evidenceJson: JSON.parse(JSON.stringify(evidenceJson)) as Prisma.InputJsonValue
+    });
   }
 
   private async recalculateQuoteTotal(quoteId: string) {

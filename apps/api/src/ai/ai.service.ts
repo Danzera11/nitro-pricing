@@ -3,6 +3,7 @@ import { ConfigService } from "@nestjs/config";
 import { Prisma } from "@prisma/client";
 import { AiQuoteDraft } from "@powerquote/shared";
 import OpenAI from "openai";
+import { AiLearningService } from "../ai-learning/ai-learning.service";
 import { AiPromptsService } from "../ai-prompts/ai-prompts.service";
 import { AuditService } from "../audit/audit.service";
 import { AuthenticatedUser } from "../auth/types";
@@ -11,6 +12,7 @@ import { PrismaService } from "../prisma/prisma.service";
 
 type ServiceContext = Array<{ code: string; name: string; description: string | null; unit: string; baseLaborPrice: Prisma.Decimal; group: { code: string } }>;
 type UnitContext = Array<{ code: string; name: string; description: string; example: string | null }>;
+type LearningContext = Array<{ title: string; content: string; source: string; updatedAt: Date }>;
 
 @Injectable()
 export class AiService {
@@ -19,7 +21,8 @@ export class AiService {
     private readonly prisma: PrismaService,
     private readonly rules: RuleEngineService,
     private readonly audit: AuditService,
-    private readonly prompts: AiPromptsService
+    private readonly prompts: AiPromptsService,
+    private readonly learning: AiLearningService
   ) {}
 
   async generateQuoteDraft(quoteRequestId: string, user: AuthenticatedUser) {
@@ -27,11 +30,12 @@ export class AiService {
       where: { id: quoteRequestId },
       include: { customer: true }
     });
-    const [services, materials, activeRules, units] = await Promise.all([
+    const [services, materials, activeRules, units, approvedLearning] = await Promise.all([
       this.prisma.service.findMany({ where: { active: true }, include: { group: true } }),
       this.prisma.suggestedMaterial.findMany({ where: { active: true }, include: { group: true } }),
       this.prisma.rule.findMany({ where: { active: true } }),
-      this.prisma.unit.findMany({ where: { active: true }, orderBy: { name: "asc" } })
+      this.prisma.unit.findMany({ where: { active: true }, orderBy: { name: "asc" } }),
+      this.learning.findApprovedForContext()
     ]);
     const kits = await this.prisma.materialKit.findMany({ where: { active: true }, include: { group: true, service: true } });
     const activePrompt = await this.prompts.getActive();
@@ -50,7 +54,13 @@ export class AiService {
       kits,
       rules: activeRules,
       ruleNotes: ruleResult.notes,
-      systemPrompt: activePrompt.content
+      systemPrompt: activePrompt.content,
+      approvedLearning: approvedLearning.map((item) => ({
+        title: item.title,
+        content: item.content,
+        source: item.source,
+        updatedAt: item.updatedAt
+      }))
     };
     let provider = "mock";
     let response: AiQuoteDraft;
@@ -69,7 +79,8 @@ export class AiService {
           inputVariables: quoteRequest.inputVariables as Record<string, unknown>,
           services,
           materials: [...materials.map((material) => material.name), ...ruleResult.suggestedMaterials, ...matchedKitItems],
-          ruleNotes: ruleResult.notes
+          ruleNotes: ruleResult.notes,
+          approvedLearning: generationInput.approvedLearning
         });
     }
 
@@ -82,6 +93,7 @@ export class AiService {
         promptSnapshot: {
           quoteRequest,
           activePrompt: { id: activePrompt.id, name: activePrompt.name, version: activePrompt.version },
+          approvedLearning: approvedLearning.map((item) => ({ id: item.id, title: item.title, source: item.source, updatedAt: item.updatedAt })),
           services: services.map((service) => ({ code: service.code, name: service.name, group: service.group.code })),
           units: units.map((unit) => ({
             code: unit.code,
@@ -127,6 +139,7 @@ export class AiService {
     rules: Array<{ code: string; name: string; conditionJson: Prisma.JsonValue; actionJson: Prisma.JsonValue }>;
     ruleNotes: string[];
     systemPrompt: string;
+    approvedLearning: LearningContext;
   }): Promise<AiQuoteDraft> {
     const client = new OpenAI({ apiKey: this.config.getOrThrow<string>("OPENAI_API_KEY") });
     const model = this.config.get<string>("OPENAI_MODEL") ?? "gpt-4.1-mini";
@@ -154,6 +167,7 @@ export class AiService {
               "Se houver mais de um servico possivel, combine itens de mao de obra coerentes e explique a premissa.",
               "Nao invente certeza: se faltar informacao, registre em assumptions, risks ou recommended_questions.",
               "O orcamento e focado em mao de obra. Materiais sao apenas sugeridos, sem preco.",
+              "Considere aprendizados aprovados como memoria operacional complementar, mas nunca acima das regras e servicos cadastrados.",
               "Calcule total_labor_price como quantity * difficulty_factor * unit_labor_price."
             ].join(" ")
           },
@@ -180,6 +194,12 @@ export class AiService {
                 name: rule.name,
                 condition: rule.conditionJson,
                 action: rule.actionJson
+              })),
+              approved_operational_learning: input.approvedLearning.map((item) => ({
+                title: item.title,
+                guidance: item.content,
+                source: item.source,
+                updated_at: item.updatedAt
               })),
               rule_notes_already_applied: input.ruleNotes
             })
@@ -229,6 +249,7 @@ export class AiService {
     services: ServiceContext;
     materials: string[];
     ruleNotes: string[];
+    approvedLearning?: LearningContext;
   }): AiQuoteDraft {
     const cameras = Number(input.inputVariables.camera_quantity ?? 4);
     const networkPoints = Number(input.inputVariables.network_points ?? cameras);
@@ -247,6 +268,7 @@ export class AiService {
       assumptions: [
         "Infraestrutura existente permite passagem de cabos sem obra civil pesada.",
         "Materiais serao precificados fora deste MVP.",
+        ...(input.approvedLearning?.slice(0, 4).map((item) => `Aprendizado aprovado: ${item.title} - ${item.content}`) ?? []),
         ...input.ruleNotes
       ],
       risks: [

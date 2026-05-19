@@ -35,6 +35,12 @@ enum QuoteRequestStatus {
   CANCELLED
 }
 
+enum AiLearningStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
 model UserExternal {
   id           String     @id @default(cuid())
   externalId   String     @unique
@@ -197,6 +203,21 @@ model AiPrompt {
   version   Int      @default(1)
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+}
+
+model AiLearning {
+  id            String           @id @default(cuid())
+  title         String
+  content       String
+  status        AiLearningStatus @default(PENDING)
+  active        Boolean          @default(false)
+  source        String           @default("manual")
+  sourceQuoteId String?
+  evidenceJson  Json             @default("{}")
+  reviewedById  String?
+  reviewedAt    DateTime?
+  createdAt     DateTime         @default(now())
+  updatedAt     DateTime         @updatedAt
 }
 
 model QuoteItem {

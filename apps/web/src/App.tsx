@@ -20,7 +20,7 @@ import {
   X
 } from "lucide-react";
 import { FormEvent, ReactNode, useEffect, useState } from "react";
-import { api, apiBlob, clearAuthToken, LoginResponse, setAuthToken, AiPrompt, AuthUser, Customer, Group, MaterialKit, Quote, QuoteItem, QuoteMaterial, QuoteRequest, Rule, Service, Unit } from "./lib/api";
+import { api, apiBlob, clearAuthToken, LoginResponse, setAuthToken, AiLearning, AiPrompt, AuthUser, Customer, Group, MaterialKit, Quote, QuoteItem, QuoteMaterial, QuoteRequest, Rule, Service, Unit } from "./lib/api";
 
 type View = "assistant" | "quote" | "control" | "users";
 type ChatMessage = { role: "assistant" | "user"; text: string };
@@ -1461,6 +1461,8 @@ function GeneralSettings() {
 function AIEngineConfig() {
   const [prompt, setPrompt] = useState<AiPrompt>();
   const [promptForm, setPromptForm] = useState({ name: "", content: "", active: true });
+  const [learning, setLearning] = useState<AiLearning[]>([]);
+  const [learningForm, setLearningForm] = useState({ title: "", content: "" });
 
   const loadPrompt = async () => {
     const data = await api<AiPrompt>("/ai-prompts/active");
@@ -1468,7 +1470,15 @@ function AIEngineConfig() {
     setPromptForm({ name: data.name, content: data.content, active: data.active });
   };
 
-  useEffect(() => { loadPrompt().catch(console.error); }, []);
+  const loadLearning = async () => {
+    const data = await api<AiLearning[]>("/ai-learning");
+    setLearning(data);
+  };
+
+  useEffect(() => {
+    loadPrompt().catch(console.error);
+    loadLearning().catch(console.error);
+  }, []);
 
   async function savePrompt() {
     const data = await api<AiPrompt>("/ai-prompts/active", {
@@ -1483,6 +1493,28 @@ function AIEngineConfig() {
     const data = await api<AiPrompt>("/ai-prompts/restore-default", { method: "POST" });
     setPrompt(data);
     setPromptForm({ name: data.name, content: data.content, active: data.active });
+  }
+
+  async function createLearning() {
+    if (!learningForm.title.trim() || !learningForm.content.trim()) return;
+    await api("/ai-learning", { method: "POST", body: JSON.stringify(learningForm) });
+    setLearningForm({ title: "", content: "" });
+    loadLearning();
+  }
+
+  async function patchLearning(item: AiLearning, body: Partial<AiLearning>) {
+    await api(`/ai-learning/${item.id}`, { method: "PATCH", body: JSON.stringify(body) });
+    loadLearning();
+  }
+
+  async function approveLearning(item: AiLearning) {
+    await api(`/ai-learning/${item.id}/approve`, { method: "POST" });
+    loadLearning();
+  }
+
+  async function rejectLearning(item: AiLearning) {
+    await api(`/ai-learning/${item.id}/reject`, { method: "POST" });
+    loadLearning();
   }
 
   return (
@@ -1561,6 +1593,37 @@ function AIEngineConfig() {
             <button className="primary" onClick={savePrompt}><Save size={16} /> Salvar prompt</button>
             <button onClick={restorePrompt}>Restaurar padrão</button>
           </div>
+        </div>
+      </div>
+      <div className="learning-panel">
+        <div className="section-title">
+          <div>
+            <h2>Aprendizado da IA</h2>
+            <p>Sugestões geradas quando alguém corrige orçamentos. Apenas aprendizados aprovados e ativos entram no contexto da próxima geração.</p>
+          </div>
+          <span>{learning.filter((item) => item.status === "PENDING").length} pendentes · {learning.filter((item) => item.status === "APPROVED" && item.active).length} ativos</span>
+        </div>
+        <div className="learning-create">
+          <input placeholder="Título do aprendizado" value={learningForm.title} onChange={(event) => setLearningForm({ ...learningForm, title: event.target.value })} />
+          <textarea placeholder="Orientação que a IA deve considerar antes de gerar orçamento" value={learningForm.content} onChange={(event) => setLearningForm({ ...learningForm, content: event.target.value })} />
+          <button className="primary" onClick={createLearning}><Plus size={16} /> Adicionar aprovado</button>
+        </div>
+        <div className="learning-list">
+          {learning.map((item) => (
+            <article key={item.id} className={`learning-card status-${item.status.toLowerCase()}`}>
+              <div>
+                <span>{learningStatusLabel(item.status)} · {item.source === "quote_correction" ? "correção de orçamento" : "manual"} · {dateLabel(item.updatedAt)}</span>
+                <strong>{item.title}</strong>
+                <p>{item.content}</p>
+              </div>
+              <div className="row-actions">
+                {item.status === "PENDING" && <button className="primary" onClick={() => approveLearning(item)}><CheckCircle2 size={15} /> Aprovar</button>}
+                {item.status === "PENDING" && <button onClick={() => rejectLearning(item)}>Rejeitar</button>}
+                {item.status === "APPROVED" && <button onClick={() => patchLearning(item, { active: !item.active })}>{item.active ? "Pausar" : "Ativar"}</button>}
+              </div>
+            </article>
+          ))}
+          {!learning.length && <p className="muted">Ainda não há aprendizados. Eles surgem quando orçamentos são corrigidos ou quando o admin adiciona uma orientação manual.</p>}
         </div>
       </div>
     </section>
@@ -1708,6 +1771,15 @@ function humanStatus(status: string) {
     APPROVED: "Aprovado",
     REJECTED: "Rejeitado",
     SENT: "Enviado"
+  };
+  return labels[status] ?? status;
+}
+
+function learningStatusLabel(status: string) {
+  const labels: Record<string, string> = {
+    PENDING: "Pendente",
+    APPROVED: "Aprovado",
+    REJECTED: "Rejeitado"
   };
   return labels[status] ?? status;
 }

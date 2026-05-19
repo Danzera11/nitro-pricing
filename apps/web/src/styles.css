@@ -1044,6 +1044,78 @@ button {
   justify-content: flex-start;
 }
 
+.learning-panel {
+  border-top: 1px solid #e6ebf3;
+  padding-top: 18px;
+  display: grid;
+  gap: 14px;
+}
+
+.learning-create {
+  display: grid;
+  grid-template-columns: minmax(220px, 0.7fr) minmax(320px, 1.4fr) auto;
+  gap: 10px;
+  align-items: stretch;
+}
+
+.learning-create textarea {
+  min-height: 48px;
+  resize: vertical;
+}
+
+.learning-list {
+  display: grid;
+  gap: 10px;
+}
+
+.learning-card {
+  border: 1px solid #e2e8f0;
+  border-radius: 12px;
+  padding: 12px;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 12px;
+  align-items: start;
+  background: #fff;
+}
+
+.learning-card > div:first-child {
+  display: grid;
+  gap: 5px;
+}
+
+.learning-card span {
+  color: #64748b;
+  font-size: 12px;
+  font-weight: 750;
+  text-transform: uppercase;
+}
+
+.learning-card p {
+  margin: 0;
+  color: #46556a;
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.learning-card.status-pending {
+  border-color: #f1c96b;
+  background: #fffaf0;
+}
+
+.learning-card.status-approved {
+  border-color: #b7d7ce;
+}
+
+.learning-card.status-rejected {
+  opacity: 0.72;
+}
+
+.muted {
+  color: #64748b;
+  font-size: 13px;
+}
+
 .config-card {
   display: grid;
   gap: 14px;
@@ -1234,6 +1306,7 @@ button {
   .settings-grid,
   .control-grid,
   .engine-grid,
+  .learning-create,
   .users-layout {
     grid-template-columns: 1fr;
   }
@@ -1320,6 +1393,7 @@ button {
   .row-main,
   .row-numbers,
   .row-insight,
+  .learning-card,
   .quote-row-grid,
   .material-row-grid,
   .row-details,
