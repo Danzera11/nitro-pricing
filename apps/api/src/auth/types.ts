@@ -7,3 +7,10 @@ export interface AuthenticatedUser {
   roles: UserRole[];
   dbUserId?: string;
 }
+
+export interface LocalAuthUser {
+  email: string;
+  password: string;
+  name: string;
+  roles: UserRole[];
+}

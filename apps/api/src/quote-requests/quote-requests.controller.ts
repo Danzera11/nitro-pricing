@@ -18,7 +18,7 @@ export class QuoteRequestsController {
   @Get()
   findAll() {
     return this.prisma.quoteRequest.findMany({
-      include: { customer: true, quote: true },
+      include: { customer: true, requestedBy: true, quote: true },
       orderBy: { createdAt: "desc" }
     });
   }

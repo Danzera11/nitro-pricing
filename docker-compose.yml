@@ -24,11 +24,14 @@ services:
     environment:
       DATABASE_URL: postgresql://${POSTGRES_USER:-powerquote}:${POSTGRES_PASSWORD:-powerquote_dev_password}@postgres:5432/${POSTGRES_DB:-powerquote}?schema=public
       PORT: 3000
+      STORAGE_DIR: /app/apps/api/storage
     depends_on:
       postgres:
         condition: service_healthy
     ports:
       - "${API_PORT:-3000}:3000"
+    volumes:
+      - powerquote_api_storage:/app/apps/api/storage
     labels:
       - "traefik.enable=${TRAEFIK_ENABLE:-false}"
       - "traefik.http.routers.powerquote-api.rule=Host(`${POWERQUOTE_API_HOST:-api.powerquote.localhost}`)"
@@ -57,3 +60,4 @@ services:
 
 volumes:
   powerquote_postgres:
+  powerquote_api_storage:

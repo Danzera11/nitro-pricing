@@ -6,9 +6,11 @@ import {
   Download,
   Edit3,
   FolderTree,
+  LogOut,
   Layers3,
   Plus,
   Save,
+  Search,
   Send,
   Settings2,
   Sparkles,
@@ -17,7 +19,7 @@ import {
   X
 } from "lucide-react";
 import { FormEvent, ReactNode, useEffect, useState } from "react";
-import { api, API_URL, AiPrompt, Customer, Group, MaterialKit, Quote, QuoteItem, QuoteMaterial, QuoteRequest, Rule, Service, Unit } from "./lib/api";
+import { api, apiBlob, clearAuthToken, LoginResponse, setAuthToken, AiPrompt, AuthUser, Customer, Group, MaterialKit, Quote, QuoteItem, QuoteMaterial, QuoteRequest, Rule, Service, Unit } from "./lib/api";
 
 type View = "assistant" | "quote" | "control";
 type ChatMessage = { role: "assistant" | "user"; text: string };
@@ -30,7 +32,8 @@ const starterPrompts = [
 
 export function App() {
   const [view, setView] = useState<View>("assistant");
-  const [me, setMe] = useState<{ name: string; roles: string[] }>();
+  const [me, setMe] = useState<AuthUser>();
+  const [authReady, setAuthReady] = useState(false);
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [selectedCustomerId, setSelectedCustomerId] = useState("");
   const [quickClient, setQuickClient] = useState({ name: "", phone: "", email: "" });
@@ -47,10 +50,39 @@ export function App() {
   const [busy, setBusy] = useState(false);
 
   useEffect(() => {
-    api<{ name: string; roles: string[] }>("/users/me").then(setMe).catch(console.error);
-    refreshCustomers();
-    refreshQuotes();
+    bootstrapSession();
   }, []);
+
+  async function bootstrapSession() {
+    try {
+      const user = await api<AuthUser>("/users/me");
+      setMe(user);
+      await Promise.all([refreshCustomers(), refreshQuotes()]);
+    } catch {
+      clearAuthToken();
+      setMe(undefined);
+    } finally {
+      setAuthReady(true);
+    }
+  }
+
+  async function handleLogin(email: string, password: string) {
+    const result = await api<LoginResponse>("/auth/login", {
+      method: "POST",
+      body: JSON.stringify({ email, password })
+    });
+    setAuthToken(result.accessToken);
+    setMe(result.user);
+    await Promise.all([refreshCustomers(), refreshQuotes()]);
+  }
+
+  function handleLogout() {
+    clearAuthToken();
+    setMe(undefined);
+    setActiveQuote(undefined);
+    setActiveRequest(undefined);
+    setMessages([{ role: "assistant", text: "Sessão encerrada. Faça login para continuar." }]);
+  }
 
   async function refreshCustomers() {
     const data = await api<Customer[]>("/customers");
@@ -232,6 +264,22 @@ export function App() {
     return `A IA usa ${rules.length} regras, ${services.length} itens/serviços, ${units.length} unidades e ${kits.length} kits antes de gerar um orçamento.`;
   }
 
+  if (!authReady) {
+    return (
+      <div className="app-shell auth-shell">
+        <div className="auth-card">
+          <Sparkles size={22} />
+          <h1>Nitro Pricing</h1>
+          <p>Carregando ambiente interno...</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (!me) {
+    return <LoginView onLogin={handleLogin} />;
+  }
+
   return (
     <div className="app-shell">
       <header className="app-topbar">
@@ -251,8 +299,9 @@ export function App() {
           </button>
         </nav>
         <div className="session-pill">
-          <strong>{me?.name ?? "Usuário"}</strong>
-          <span>modo assistido</span>
+          <strong>{me.name}</strong>
+          <span>{me.roles.join(", ")}</span>
+          <button className="logout-button" onClick={handleLogout}><LogOut size={14} /> Sair</button>
         </div>
       </header>
 
@@ -296,6 +345,51 @@ export function App() {
   );
 }
 
+function LoginView({ onLogin }: { onLogin: (email: string, password: string) => Promise<void> }) {
+  const [email, setEmail] = useState("admin@nitro.local");
+  const [password, setPassword] = useState("");
+  const [error, setError] = useState("");
+  const [busy, setBusy] = useState(false);
+
+  async function submit(event: FormEvent) {
+    event.preventDefault();
+    setBusy(true);
+    setError("");
+    try {
+      await onLogin(email.trim(), password);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Não foi possível entrar.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <main className="app-shell auth-shell">
+      <section className="auth-brand">
+        <span className="eyebrow">Ambiente interno Nitro</span>
+        <h1>Nitro Pricing</h1>
+        <p>Orçamentos técnicos com IA, controle comercial e revisão operacional em uma interface segura para testes internos.</p>
+      </section>
+      <form className="auth-card" onSubmit={submit}>
+        <div className="brand-lock"><Sparkles size={18} /></div>
+        <h2>Acessar plataforma</h2>
+        <p>Use o usuário local configurado na VM. A autenticação continua preparada para Keycloak/SSO no próximo ciclo.</p>
+        <label>
+          <span>E-mail</span>
+          <input type="email" value={email} onChange={(event) => setEmail(event.target.value)} placeholder="admin@nitro.local" autoComplete="username" />
+        </label>
+        <label>
+          <span>Senha</span>
+          <input type="password" value={password} onChange={(event) => setPassword(event.target.value)} placeholder="Senha" autoComplete="current-password" />
+        </label>
+        {error && <p className="auth-error">{error}</p>}
+        <button className="primary" disabled={busy}>{busy ? "Entrando..." : "Entrar"}</button>
+      </form>
+    </main>
+  );
+}
+
 function AssistantView(props: {
   messages: ChatMessage[];
   input: string;
@@ -313,6 +407,18 @@ function AssistantView(props: {
   onQuickClient: (client: { name: string; phone: string; email: string }) => void;
   onOpenHistory: (request: QuoteRequest) => void;
 }) {
+  const [historySearch, setHistorySearch] = useState("");
+  const filteredHistory = props.quoteHistory.filter((request) => {
+    const haystack = [
+      request.quote?.quoteNumber,
+      request.title,
+      request.customer?.name,
+      request.quote?.status,
+      request.quote?.totalLaborPrice
+    ].join(" ").toLowerCase();
+    return haystack.includes(historySearch.toLowerCase());
+  });
+
   return (
     <main className="assistant-screen">
       <section className="hero-copy">
@@ -386,13 +492,19 @@ function AssistantView(props: {
         )}
         <section className="side-section">
           <h2>Orçamentos salvos</h2>
+          <label className="history-search">
+            <Search size={15} />
+            <input placeholder="Buscar orçamento" value={historySearch} onChange={(event) => setHistorySearch(event.target.value)} />
+          </label>
           <div className="history-list">
-            {props.quoteHistory.slice(0, 6).map((request) => (
+            {filteredHistory.slice(0, 10).map((request) => (
               <button key={request.id} onClick={() => props.onOpenHistory(request)}>
                 <span>{request.quote?.quoteNumber ?? request.title}</span>
                 <strong>{request.customer?.name}</strong>
+                <em>{dateLabel(request.createdAt)} · {request.requestedBy?.name ?? "Equipe Nitro"} · {humanStatus(request.quote?.status ?? request.status)} · {money(request.quote?.totalLaborPrice ?? 0)}</em>
               </button>
             ))}
+            {!filteredHistory.length && <p>Nenhum orçamento encontrado.</p>}
           </div>
         </section>
       </aside>
@@ -449,8 +561,11 @@ function QuoteWorkspace(props: {
     props.onDeleted();
   }
 
-  function exportPdf() {
-    window.open(`${API_URL}/api/quotes/${quote.id}/export.pdf`, "_blank", "noopener,noreferrer");
+  async function exportPdf() {
+    const blob = await apiBlob(`/quotes/${quote.id}/export.pdf`);
+    const url = window.URL.createObjectURL(blob);
+    window.open(url, "_blank", "noopener,noreferrer");
+    window.setTimeout(() => window.URL.revokeObjectURL(url), 60_000);
   }
 
   return (

@@ -296,6 +296,7 @@ export class QuotesController {
 
   private professionalPdf(quote: QuoteForPdf, materials: QuoteMaterialRecord[]) {
     const safe = (value: string) => value.replace(/\\/g, "\\\\").replace(/\(/g, "\\(").replace(/\)/g, "\\)");
+    const byteLength = (value: string) => Buffer.byteLength(value, "latin1");
     const brl = (value: unknown) => Number(value ?? 0).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
     const validUntil = new Date(quote.createdAt);
     validUntil.setDate(validUntil.getDate() + 7);
@@ -399,22 +400,22 @@ export class QuotesController {
       "<< /Type /Catalog /Pages 2 0 R >>",
       "<< /Type /Pages /Kids [3 0 R] /Count 1 >>",
       "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 842] /Resources << /Font << /F1 4 0 R /F2 5 0 R >> >> /Contents 6 0 R >>",
-      "<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>",
-      "<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Bold >>",
-      `<< /Length ${Buffer.byteLength(content)} >>\nstream\n${content}\nendstream`
+      "<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica /Encoding /WinAnsiEncoding >>",
+      "<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Bold /Encoding /WinAnsiEncoding >>",
+      `<< /Length ${byteLength(content)} >>\nstream\n${content}\nendstream`
     ];
     let pdf = "%PDF-1.4\n";
     const offsets = [0];
     objects.forEach((object, index) => {
-      offsets.push(Buffer.byteLength(pdf));
+      offsets.push(byteLength(pdf));
       pdf += `${index + 1} 0 obj\n${object}\nendobj\n`;
     });
-    const xref = Buffer.byteLength(pdf);
+    const xref = byteLength(pdf);
     pdf += `xref\n0 ${objects.length + 1}\n0000000000 65535 f \n`;
     offsets.slice(1).forEach((offset) => {
       pdf += `${String(offset).padStart(10, "0")} 00000 n \n`;
     });
     pdf += `trailer\n<< /Size ${objects.length + 1} /Root 1 0 R >>\nstartxref\n${xref}\n%%EOF`;
-    return Buffer.from(pdf, "utf8");
+    return Buffer.from(pdf, "latin1");
   }
 }

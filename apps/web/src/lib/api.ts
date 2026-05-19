@@ -1,18 +1,53 @@
 export const API_URL = import.meta.env.VITE_API_URL ?? "http://localhost:3000";
+const TOKEN_KEY = "nitro_pricing_access_token";
+
+export function getAuthToken() {
+  return window.localStorage.getItem(TOKEN_KEY);
+}
+
+export function setAuthToken(token: string) {
+  window.localStorage.setItem(TOKEN_KEY, token);
+}
+
+export function clearAuthToken() {
+  window.localStorage.removeItem(TOKEN_KEY);
+}
+
+export function authHeaders() {
+  const token = getAuthToken();
+  return token ? { Authorization: `Bearer ${token}` } : {};
+}
+
+function buildHeaders(headers?: HeadersInit, json = false) {
+  const next = new Headers(headers);
+  const token = getAuthToken();
+  if (json && !next.has("Content-Type")) next.set("Content-Type", "application/json");
+  if (token) next.set("Authorization", `Bearer ${token}`);
+  return next;
+}
 
 export async function api<T>(path: string, options: RequestInit = {}): Promise<T> {
   const response = await fetch(`${API_URL}/api${path}`, {
     ...options,
-    headers: {
-      "Content-Type": "application/json",
-      ...(options.headers ?? {})
-    }
+    headers: buildHeaders(options.headers, true)
   });
   if (!response.ok) {
     const detail = await response.text();
     throw new Error(detail || `Erro HTTP ${response.status}`);
   }
   return response.json() as Promise<T>;
+}
+
+export async function apiBlob(path: string, options: RequestInit = {}): Promise<Blob> {
+  const response = await fetch(`${API_URL}/api${path}`, {
+    ...options,
+    headers: buildHeaders(options.headers)
+  });
+  if (!response.ok) {
+    const detail = await response.text();
+    throw new Error(detail || `Erro HTTP ${response.status}`);
+  }
+  return response.blob();
 }
 
 export type Customer = { id: string; name: string; contactName?: string };
@@ -69,7 +104,10 @@ export type QuoteRequest = {
   status: string;
   inputVariables: Record<string, unknown>;
   customer: Customer;
+  requestedBy?: AuthUser;
   quote?: Quote;
   createdAt: string;
 };
 export type AiPrompt = { id: string; name: string; content: string; active: boolean; version: number; updatedAt: string };
+export type AuthUser = { name: string; email: string; roles: string[] };
+export type LoginResponse = { accessToken: string; user: AuthUser };

@@ -9,8 +9,8 @@ MVP em monorepo TypeScript para geração assistida de orçamentos estimados de 
 - Banco: PostgreSQL
 - ORM: Prisma
 - Containers: Docker e Docker Compose
-- Auth: camada JWT/OIDC pronta para Keycloak, com `AUTH_MODE=dev` para desenvolvimento local
-- Deploy previsto atrás de Traefik externo
+- Auth: `AUTH_MODE=local` para testes internos com login simples, `dev` para mock local e `keycloak` preparado para OIDC/JWT futuro
+- Deploy atual: Docker Compose direto em VM. Traefik/Keycloak seguem previstos para etapa posterior
 
 ## Estrutura
 
@@ -89,7 +89,18 @@ npm run prisma:migrate -w @powerquote/api
 
 ## Autenticação
 
-Modo local:
+Modo local com tela de login:
+
+```env
+AUTH_MODE=local
+LOCAL_AUTH_SECRET=troque-por-um-segredo-longo
+LOCAL_ADMIN_EMAIL=admin@nitro.local
+LOCAL_ADMIN_PASSWORD=troque-esta-senha
+LOCAL_USER_EMAIL=tecnico@nitro.local
+LOCAL_USER_PASSWORD=troque-esta-senha
+```
+
+Modo desenvolvimento sem login:
 
 ```env
 AUTH_MODE=dev
@@ -105,6 +116,66 @@ KEYCLOAK_AUDIENCE=powerquote-api
 ```
 
 O backend valida JWT via JWKS do issuer e aplica roles no servidor com `RolesGuard`.
+
+## Deploy simples em VM para testes internos
+
+1. Instale Docker e Docker Compose na VM.
+2. Clone o repositório:
+
+```bash
+git clone https://github.com/Danzera11/nitro-pricing.git
+cd nitro-pricing
+```
+
+3. Crie o `.env`:
+
+```bash
+cp .env.example .env
+```
+
+4. Edite obrigatoriamente:
+
+```env
+AUTH_MODE=local
+LOCAL_AUTH_SECRET=<segredo-longo-aleatorio>
+LOCAL_ADMIN_PASSWORD=<senha-forte>
+LOCAL_USER_PASSWORD=<senha-forte>
+POSTGRES_PASSWORD=<senha-forte-do-banco>
+VITE_API_URL=http://IP_DA_VM:3000
+WEB_PORT=5173
+API_PORT=3000
+```
+
+5. Suba a stack:
+
+```bash
+docker compose up -d --build
+```
+
+6. Aplique migrations e seed inicial:
+
+```bash
+docker compose exec api npx prisma migrate deploy -w @powerquote/api
+docker compose exec api npm run prisma:seed
+```
+
+7. Acesse:
+
+- Web: `http://IP_DA_VM:5173`
+- API: `http://IP_DA_VM:3000/api`
+
+Volumes persistentes:
+
+- `powerquote_postgres`: dados do PostgreSQL
+- `powerquote_api_storage`: reservado para PDFs/uploads/artefatos operacionais
+
+Para atualizar:
+
+```bash
+git pull
+docker compose up -d --build
+docker compose exec api npx prisma migrate deploy -w @powerquote/api
+```
 
 ## IA
 
