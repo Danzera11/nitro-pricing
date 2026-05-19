@@ -532,7 +532,7 @@ function UsersAdmin() {
           </div>
           <input placeholder="Login, ex.: admin" value={form.username} onChange={(event) => setForm({ ...form, username: event.target.value })} />
           <input placeholder="Nome" value={form.name} onChange={(event) => setForm({ ...form, name: event.target.value })} />
-          <input placeholder="E-mail" value={form.email} onChange={(event) => setForm({ ...form, email: event.target.value })} />
+          <input placeholder="E-mail opcional" value={form.email} onChange={(event) => setForm({ ...form, email: event.target.value })} />
           <input type="password" placeholder={selectedId ? "Nova senha, se quiser redefinir" : "Senha inicial"} value={form.password} onChange={(event) => setForm({ ...form, password: event.target.value })} />
           <div className="role-picker">
             {roleOptions.map((role) => (
