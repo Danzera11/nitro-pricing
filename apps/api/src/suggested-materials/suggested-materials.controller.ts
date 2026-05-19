@@ -10,7 +10,7 @@ export class SuggestedMaterialsController {
   constructor(private readonly crud: CrudService) {}
 
   @Get() findAll() { return this.crud.findMany("suggestedMaterial", { include: { group: true }, orderBy: { name: "asc" } }); }
-  @Post() @Roles("admin", "gestor") create(@Body() dto: CreateSuggestedMaterialDto, @CurrentUser() user: AuthenticatedUser) { return this.crud.create("suggestedMaterial", dto, user); }
-  @Patch(":id") @Roles("admin", "gestor") update(@Param("id") id: string, @Body() dto: Partial<CreateSuggestedMaterialDto>, @CurrentUser() user: AuthenticatedUser) { return this.crud.update("suggestedMaterial", id, dto, user); }
+  @Post() @Roles("admin") create(@Body() dto: CreateSuggestedMaterialDto, @CurrentUser() user: AuthenticatedUser) { return this.crud.create("suggestedMaterial", dto, user); }
+  @Patch(":id") @Roles("admin") update(@Param("id") id: string, @Body() dto: Partial<CreateSuggestedMaterialDto>, @CurrentUser() user: AuthenticatedUser) { return this.crud.update("suggestedMaterial", id, dto, user); }
   @Delete(":id") @Roles("admin") remove(@Param("id") id: string, @CurrentUser() user: AuthenticatedUser) { return this.crud.remove("suggestedMaterial", id, user); }
 }

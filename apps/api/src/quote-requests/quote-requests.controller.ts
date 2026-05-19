@@ -32,7 +32,7 @@ export class QuoteRequestsController {
   }
 
   @Post()
-  @Roles("admin", "tecnico", "comercial", "gestor")
+  @Roles("admin", "editor", "tecnico", "comercial", "gestor")
   async create(@Body() dto: CreateQuoteRequestDto, @CurrentUser() user: AuthenticatedUser) {
     const record = await this.prisma.quoteRequest.create({
       data: {
@@ -47,7 +47,7 @@ export class QuoteRequestsController {
   }
 
   @Patch(":id")
-  @Roles("admin", "tecnico", "gestor")
+  @Roles("admin", "editor", "tecnico", "gestor")
   async update(@Param("id") id: string, @Body() dto: Partial<CreateQuoteRequestDto>, @CurrentUser() user: AuthenticatedUser) {
     const before = await this.prisma.quoteRequest.findUniqueOrThrow({ where: { id } });
     const record = await this.prisma.quoteRequest.update({
@@ -64,7 +64,7 @@ export class QuoteRequestsController {
   }
 
   @Post(":id/generate-ai")
-  @Roles("admin", "tecnico", "gestor")
+  @Roles("admin", "editor", "tecnico", "gestor")
   generateAi(@Param("id") id: string, @CurrentUser() user: AuthenticatedUser) {
     return this.ai.generateQuoteDraft(id, user);
   }

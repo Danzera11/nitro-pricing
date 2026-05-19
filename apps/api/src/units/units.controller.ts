@@ -15,13 +15,13 @@ export class UnitsController {
   }
 
   @Post()
-  @Roles("admin", "gestor")
+  @Roles("admin")
   create(@Body() dto: CreateUnitDto, @CurrentUser() user: AuthenticatedUser) {
     return this.crud.create("unit", dto, user);
   }
 
   @Patch(":id")
-  @Roles("admin", "gestor")
+  @Roles("admin")
   update(@Param("id") id: string, @Body() dto: Partial<CreateUnitDto>, @CurrentUser() user: AuthenticatedUser) {
     return this.crud.update("unit", id, dto, user);
   }

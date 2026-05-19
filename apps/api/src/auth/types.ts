@@ -1,4 +1,4 @@
-export type UserRole = "admin" | "tecnico" | "comercial" | "gestor";
+export type UserRole = "admin" | "editor" | "visualizador" | "tecnico" | "comercial" | "gestor";
 
 export interface AuthenticatedUser {
   externalId: string;
@@ -9,6 +9,7 @@ export interface AuthenticatedUser {
 }
 
 export interface LocalAuthUser {
+  username?: string;
   email: string;
   password: string;
   name: string;

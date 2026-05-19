@@ -44,7 +44,7 @@ export class QuotesController {
   }
 
   @Patch(":id/status")
-  @Roles("admin", "tecnico", "comercial", "gestor")
+  @Roles("admin", "editor", "tecnico", "comercial", "gestor")
   async updateStatus(@Param("id") id: string, @Body() body: { status: QuoteStatus }, @CurrentUser() user: AuthenticatedUser) {
     const before = await this.prisma.quote.findUniqueOrThrow({ where: { id } });
     const record = await this.prisma.quote.update({ where: { id }, data: { status: body.status } });
@@ -53,7 +53,7 @@ export class QuotesController {
   }
 
   @Post(":id/duplicate")
-  @Roles("admin", "tecnico", "comercial", "gestor")
+  @Roles("admin", "editor", "visualizador", "tecnico", "comercial", "gestor")
   async duplicate(@Param("id") id: string, @CurrentUser() user: AuthenticatedUser) {
     const quote = await this.prisma.quote.findUniqueOrThrow({
       where: { id },
@@ -126,7 +126,7 @@ export class QuotesController {
   }
 
   @Post(":quoteId/items")
-  @Roles("admin", "tecnico", "gestor")
+  @Roles("admin", "editor", "tecnico", "gestor")
   async addItem(@Param("quoteId") quoteId: string, @Body() dto: UpdateQuoteItemDto, @CurrentUser() user: AuthenticatedUser) {
     const quantity = dto.quantity ?? 1;
     const difficultyFactor = dto.difficultyFactor ?? 1;
@@ -152,7 +152,7 @@ export class QuotesController {
   }
 
   @Patch(":quoteId/items/:itemId")
-  @Roles("admin", "tecnico", "gestor")
+  @Roles("admin", "editor", "tecnico", "gestor")
   async updateItem(
     @Param("quoteId") quoteId: string,
     @Param("itemId") itemId: string,
@@ -176,7 +176,7 @@ export class QuotesController {
   }
 
   @Delete(":quoteId/items/:itemId")
-  @Roles("admin", "tecnico", "gestor")
+  @Roles("admin", "editor", "tecnico", "gestor")
   async removeItem(@Param("quoteId") quoteId: string, @Param("itemId") itemId: string, @CurrentUser() user: AuthenticatedUser) {
     const before = await this.prisma.quoteItem.findUniqueOrThrow({ where: { id: itemId } });
     const record = await this.prisma.quoteItem.delete({ where: { id: itemId } });
@@ -186,7 +186,7 @@ export class QuotesController {
   }
 
   @Post(":quoteId/materials")
-  @Roles("admin", "tecnico", "gestor")
+  @Roles("admin", "editor", "tecnico", "gestor")
   async addMaterial(@Param("quoteId") quoteId: string, @Body() dto: QuoteMaterialDto, @CurrentUser() user: AuthenticatedUser) {
     const quote = await this.prisma.quote.findUniqueOrThrow({ where: { id: quoteId } });
     const materials = this.normalizeMaterials(quote.suggestedMaterials);
@@ -201,7 +201,7 @@ export class QuotesController {
   }
 
   @Patch(":quoteId/materials/:materialKey")
-  @Roles("admin", "tecnico", "gestor")
+  @Roles("admin", "editor", "tecnico", "gestor")
   async updateMaterial(
     @Param("quoteId") quoteId: string,
     @Param("materialKey") materialKey: string,
@@ -223,7 +223,7 @@ export class QuotesController {
   }
 
   @Delete(":quoteId/materials/:materialKey")
-  @Roles("admin", "tecnico", "gestor")
+  @Roles("admin", "editor", "tecnico", "gestor")
   async removeMaterial(@Param("quoteId") quoteId: string, @Param("materialKey") materialKey: string, @CurrentUser() user: AuthenticatedUser) {
     const quote = await this.prisma.quote.findUniqueOrThrow({ where: { id: quoteId } });
     const materials = this.normalizeMaterials(quote.suggestedMaterials);

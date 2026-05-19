@@ -193,11 +193,11 @@ p {
 .assistant-screen {
   min-height: calc(100vh - 64px);
   display: grid;
-  grid-template-columns: minmax(260px, 390px) minmax(420px, 700px) minmax(260px, 320px);
-  gap: 18px;
+  grid-template-columns: minmax(220px, 320px) minmax(480px, 760px) minmax(300px, 360px);
+  gap: 16px;
   align-items: start;
   padding: 18px 24px;
-  max-width: 1600px;
+  max-width: 1500px;
   margin: 0 auto;
 }
 
@@ -205,7 +205,7 @@ p {
   align-self: start;
   display: grid;
   gap: 14px;
-  padding-top: 52px;
+  padding-top: 34px;
 }
 
 .hero-copy p {
@@ -357,7 +357,11 @@ select:focus {
   padding: 18px;
   display: grid;
   align-content: start;
-  gap: 16px;
+  gap: 12px;
+  position: sticky;
+  top: 78px;
+  max-height: calc(100vh - 92px);
+  overflow: auto;
 }
 
 .side-section {
@@ -374,29 +378,72 @@ select:focus {
 
 .history-list {
   display: grid;
-  gap: 8px;
+  gap: 7px;
 }
 
-.history-list button {
+.history-list button,
+.history-card > button {
   justify-content: flex-start;
   text-align: left;
   display: grid;
   gap: 3px;
+  width: 100%;
+  border: 0;
+  padding: 0;
+  background: transparent;
 }
 
-.history-list button span {
+.history-list button span,
+.history-card span {
   font-weight: 750;
 }
 
-.history-list button strong {
+.history-list button strong,
+.history-card strong {
   color: #6b7485;
   font-size: 12px;
 }
 
-.history-list button em {
+.history-list button em,
+.history-card em {
   color: #7b7280;
   font-size: 11px;
   font-style: normal;
+}
+
+.history-card {
+  border: 1px solid #e6ebf3;
+  border-radius: 10px;
+  padding: 9px;
+  display: grid;
+  gap: 8px;
+  background: #fff;
+}
+
+.history-actions,
+.history-filters,
+.history-pagination {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+}
+
+.history-actions button,
+.history-pagination button {
+  padding: 5px 7px;
+  font-size: 11px;
+}
+
+.history-filters select {
+  min-height: 34px;
+  padding: 7px 8px;
+  font-size: 12px;
+}
+
+.history-pagination {
+  justify-content: space-between;
+  color: #7b7280;
+  font-size: 12px;
 }
 
 .history-search {
@@ -415,6 +462,68 @@ select:focus {
   border: 0;
   padding: 8px 0;
   box-shadow: none;
+}
+
+.users-layout {
+  display: grid;
+  grid-template-columns: minmax(300px, 420px) minmax(0, 1fr);
+  gap: 18px;
+  align-items: start;
+}
+
+.user-form {
+  display: grid;
+  gap: 10px;
+}
+
+.role-picker {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.role-picker label {
+  border: 1px solid #e4dfe8;
+  border-radius: 999px;
+  padding: 7px 10px;
+  display: inline-flex;
+  gap: 6px;
+  align-items: center;
+  color: #4b4451;
+  font-size: 13px;
+  font-weight: 750;
+}
+
+.role-picker input {
+  width: 14px;
+  height: 14px;
+}
+
+.user-list {
+  display: grid;
+  gap: 8px;
+}
+
+.user-list article {
+  border: 1px solid #e6ebf3;
+  border-radius: 12px;
+  padding: 11px;
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  background: #fff;
+}
+
+.user-list article div:first-child {
+  display: grid;
+  gap: 3px;
+}
+
+.user-list span,
+.user-list em {
+  color: #6b7485;
+  font-size: 12px;
+  font-style: normal;
 }
 
 .quote-mini,
@@ -1113,13 +1222,19 @@ button {
     position: static;
     max-height: none;
   }
+
+  .assistant-side {
+    position: static;
+    max-height: none;
+  }
 }
 
 @media (max-width: 1180px) {
   .assistant-screen,
   .settings-grid,
   .control-grid,
-  .engine-grid {
+  .engine-grid,
+  .users-layout {
     grid-template-columns: 1fr;
   }
 
@@ -1211,6 +1326,7 @@ button {
   .material-details,
   .material-add-grid,
   .builder-grid,
+  .users-layout,
   .item-config {
     grid-template-columns: 1fr;
   }

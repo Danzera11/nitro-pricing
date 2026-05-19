@@ -9,6 +9,8 @@ datasource db {
 
 enum UserRole {
   admin
+  editor
+  visualizador
   tecnico
   comercial
   gestor
@@ -36,9 +38,12 @@ enum QuoteRequestStatus {
 model UserExternal {
   id           String     @id @default(cuid())
   externalId   String     @unique
+  username     String?    @unique
   email        String     @unique
   name         String
   roles        UserRole[] @default([])
+  passwordHash String?
+  active       Boolean    @default(true)
   createdAt    DateTime   @default(now())
   updatedAt    DateTime   @updatedAt
   requests     QuoteRequest[]

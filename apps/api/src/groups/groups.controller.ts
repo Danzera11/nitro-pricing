@@ -10,7 +10,7 @@ export class GroupsController {
   constructor(private readonly crud: CrudService) {}
 
   @Get() findAll() { return this.crud.findMany("group", { orderBy: { code: "asc" } }); }
-  @Post() @Roles("admin", "gestor") create(@Body() dto: CreateGroupDto, @CurrentUser() user: AuthenticatedUser) { return this.crud.create("group", dto, user); }
-  @Patch(":id") @Roles("admin", "gestor") update(@Param("id") id: string, @Body() dto: Partial<CreateGroupDto>, @CurrentUser() user: AuthenticatedUser) { return this.crud.update("group", id, dto, user); }
+  @Post() @Roles("admin") create(@Body() dto: CreateGroupDto, @CurrentUser() user: AuthenticatedUser) { return this.crud.create("group", dto, user); }
+  @Patch(":id") @Roles("admin") update(@Param("id") id: string, @Body() dto: Partial<CreateGroupDto>, @CurrentUser() user: AuthenticatedUser) { return this.crud.update("group", id, dto, user); }
   @Delete(":id") @Roles("admin") remove(@Param("id") id: string, @CurrentUser() user: AuthenticatedUser) { return this.crud.remove("group", id, user); }
 }

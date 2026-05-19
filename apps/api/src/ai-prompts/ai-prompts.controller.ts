@@ -7,25 +7,25 @@ export class AiPromptsController {
   constructor(private readonly prompts: AiPromptsService) {}
 
   @Get()
-  @Roles("admin", "gestor")
+  @Roles("admin")
   findAll() {
     return this.prompts.findAll();
   }
 
   @Get("active")
-  @Roles("admin", "gestor")
+  @Roles("admin")
   active() {
     return this.prompts.getActive();
   }
 
   @Patch("active")
-  @Roles("admin", "gestor")
+  @Roles("admin")
   saveActive(@Body() body: { name: string; content: string; active?: boolean }) {
     return this.prompts.saveActive(body);
   }
 
   @Post("restore-default")
-  @Roles("admin", "gestor")
+  @Roles("admin")
   restoreDefault() {
     return this.prompts.restoreDefault();
   }

@@ -15,13 +15,13 @@ export class MaterialKitsController {
   }
 
   @Post()
-  @Roles("admin", "gestor")
+  @Roles("admin")
   create(@Body() dto: CreateMaterialKitDto, @CurrentUser() user: AuthenticatedUser) {
     return this.crud.create("materialKit", dto, user);
   }
 
   @Patch(":id")
-  @Roles("admin", "gestor")
+  @Roles("admin")
   update(@Param("id") id: string, @Body() dto: Partial<CreateMaterialKitDto>, @CurrentUser() user: AuthenticatedUser) {
     return this.crud.update("materialKit", id, dto, user);
   }

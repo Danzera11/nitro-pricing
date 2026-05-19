@@ -1,6 +1,7 @@
 import { Injectable, UnauthorizedException } from "@nestjs/common";
 import { ConfigService } from "@nestjs/config";
 import { SignJWT, jwtVerify, createRemoteJWKSet } from "jose";
+import { pbkdf2Sync, randomBytes, timingSafeEqual } from "crypto";
 import { PrismaService } from "../prisma/prisma.service";
 import { AuthenticatedUser, LocalAuthUser, UserRole } from "./types";
 
@@ -52,22 +53,28 @@ export class AuthService {
     });
   }
 
-  async loginLocal(email: string, password: string) {
+  async loginLocal(login: string, password: string) {
     const mode = this.config.get<string>("AUTH_MODE") ?? "dev";
     if (mode !== "local" && mode !== "dev") {
       throw new UnauthorizedException("Local login is disabled");
     }
 
-    const user = this.localUsers().find((candidate) => candidate.email.toLowerCase() === email.toLowerCase());
-    if (!user || user.password !== password) {
+    await this.ensureDefaultLocalUsers();
+    const identity = login.trim().toLowerCase();
+    const dbUser = await this.prisma.userExternal.findFirst({
+      where: {
+        OR: [{ username: identity }, { email: identity }]
+      }
+    });
+    if (!dbUser?.active || !dbUser.passwordHash || !this.verifyPassword(password, dbUser.passwordHash)) {
       throw new UnauthorizedException("E-mail ou senha inválidos");
     }
 
     const authenticated = await this.upsertUser({
-      externalId: `local:${user.email.toLowerCase()}`,
-      email: user.email,
-      name: user.name,
-      roles: user.roles
+      externalId: dbUser.externalId,
+      email: dbUser.email,
+      name: dbUser.name,
+      roles: dbUser.roles as UserRole[]
     });
     const token = await this.signLocalToken(authenticated);
     return { accessToken: token, user: authenticated };
@@ -81,6 +88,17 @@ export class AuthService {
       issuer: "nitro-pricing",
       audience: "nitro-pricing-api"
     });
+    const dbUser = await this.prisma.userExternal.findUnique({ where: { externalId: String(payload.sub) } });
+    if (dbUser && !dbUser.active) throw new UnauthorizedException("Usuário inativo");
+    if (dbUser) {
+      return {
+        externalId: dbUser.externalId,
+        email: dbUser.email,
+        name: dbUser.name,
+        roles: dbUser.roles as UserRole[],
+        dbUserId: dbUser.id
+      };
+    }
     return this.upsertUser({
       externalId: String(payload.sub),
       email: String(payload.email),
@@ -104,11 +122,62 @@ export class AuthService {
       .sign(this.localSecret());
   }
 
-  private parseRoles(value: string): UserRole[] {
+  parseRoles(value: string): UserRole[] {
     return value
       .split(",")
       .map((role) => role.trim())
-      .filter((role): role is UserRole => ["admin", "tecnico", "comercial", "gestor"].includes(role));
+      .filter((role): role is UserRole => ["admin", "editor", "visualizador", "tecnico", "comercial", "gestor"].includes(role));
+  }
+
+  hashPassword(password: string) {
+    const salt = randomBytes(16).toString("base64url");
+    const hash = pbkdf2Sync(password, salt, 120_000, 32, "sha256").toString("base64url");
+    return `pbkdf2_sha256$120000$${salt}$${hash}`;
+  }
+
+  verifyPassword(password: string, stored: string) {
+    const [algorithm, iterations, salt, hash] = stored.split("$");
+    if (algorithm !== "pbkdf2_sha256" || !iterations || !salt || !hash) return false;
+    const expected = Buffer.from(hash, "base64url");
+    const actual = pbkdf2Sync(password, salt, Number(iterations), expected.length, "sha256");
+    return expected.length === actual.length && timingSafeEqual(expected, actual);
+  }
+
+  async ensureDefaultLocalUsers() {
+    const users = this.localUsers();
+    for (const user of users) {
+      const username = (user.username ?? user.email.split("@")[0]).toLowerCase();
+      const email = user.email.toLowerCase();
+      const existing = await this.prisma.userExternal.findFirst({
+        where: { OR: [{ username }, { email }] }
+      });
+      if (existing) {
+        if (!existing.passwordHash) {
+          await this.prisma.userExternal.update({
+            where: { id: existing.id },
+            data: {
+              username: existing.username ?? username,
+              externalId: existing.externalId.startsWith("local:") ? existing.externalId : `local:${username}`,
+              roles: user.roles,
+              passwordHash: this.hashPassword(user.password),
+              active: true
+            }
+          });
+        }
+        continue;
+      }
+      await this.prisma.userExternal.create({
+        data: {
+          externalId: `local:${username}`,
+          username,
+          email,
+          name: user.name,
+          roles: user.roles,
+          passwordHash: this.hashPassword(user.password),
+          active: true
+        }
+      });
+    }
   }
 
   private localUsers(): LocalAuthUser[] {
@@ -123,16 +192,18 @@ export class AuthService {
     }
     return [
       {
+        username: this.config.get<string>("LOCAL_ADMIN_USERNAME") ?? "admin",
         email: this.config.get<string>("LOCAL_ADMIN_EMAIL") ?? "admin@nitro.local",
-        password: this.config.get<string>("LOCAL_ADMIN_PASSWORD") ?? "admin123",
+        password: this.config.get<string>("LOCAL_ADMIN_PASSWORD") ?? "vgbrvx2ddm",
         name: this.config.get<string>("LOCAL_ADMIN_NAME") ?? "Administrador Nitro",
-        roles: this.parseRoles(this.config.get<string>("LOCAL_ADMIN_ROLES") ?? "admin,tecnico,comercial,gestor")
+        roles: this.parseRoles(this.config.get<string>("LOCAL_ADMIN_ROLES") ?? "admin")
       },
       {
+        username: this.config.get<string>("LOCAL_USER_USERNAME") ?? "editor",
         email: this.config.get<string>("LOCAL_USER_EMAIL") ?? "tecnico@nitro.local",
         password: this.config.get<string>("LOCAL_USER_PASSWORD") ?? "tecnico123",
         name: this.config.get<string>("LOCAL_USER_NAME") ?? "Técnico Nitro",
-        roles: this.parseRoles(this.config.get<string>("LOCAL_USER_ROLES") ?? "tecnico,comercial")
+        roles: this.parseRoles(this.config.get<string>("LOCAL_USER_ROLES") ?? "editor")
       }
     ];
   }
@@ -145,7 +216,7 @@ export class AuthService {
     const dbUser = await this.prisma.userExternal.upsert({
       where: { externalId: user.externalId },
       update: { email: user.email, name: user.name, roles: user.roles },
-      create: { externalId: user.externalId, email: user.email, name: user.name, roles: user.roles }
+      create: { externalId: user.externalId, username: user.externalId.startsWith("local:") ? user.email.split("@")[0] : undefined, email: user.email, name: user.name, roles: user.roles }
     });
     return { ...user, dbUserId: dbUser.id };
   }

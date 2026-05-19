@@ -10,7 +10,7 @@ export class ServicesController {
   constructor(private readonly crud: CrudService) {}
 
   @Get() findAll() { return this.crud.findMany("service", { include: { group: true }, orderBy: { code: "asc" } }); }
-  @Post() @Roles("admin", "gestor") create(@Body() dto: CreateServiceDto, @CurrentUser() user: AuthenticatedUser) { return this.crud.create("service", dto, user); }
-  @Patch(":id") @Roles("admin", "gestor") update(@Param("id") id: string, @Body() dto: Partial<CreateServiceDto>, @CurrentUser() user: AuthenticatedUser) { return this.crud.update("service", id, dto, user); }
+  @Post() @Roles("admin") create(@Body() dto: CreateServiceDto, @CurrentUser() user: AuthenticatedUser) { return this.crud.create("service", dto, user); }
+  @Patch(":id") @Roles("admin") update(@Param("id") id: string, @Body() dto: Partial<CreateServiceDto>, @CurrentUser() user: AuthenticatedUser) { return this.crud.update("service", id, dto, user); }
   @Delete(":id") @Roles("admin") remove(@Param("id") id: string, @CurrentUser() user: AuthenticatedUser) { return this.crud.remove("service", id, user); }
 }

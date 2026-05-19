@@ -94,11 +94,23 @@ Modo local com tela de login:
 ```env
 AUTH_MODE=local
 LOCAL_AUTH_SECRET=troque-por-um-segredo-longo
+LOCAL_ADMIN_USERNAME=admin
 LOCAL_ADMIN_EMAIL=admin@nitro.local
-LOCAL_ADMIN_PASSWORD=troque-esta-senha
+LOCAL_ADMIN_PASSWORD=vgbrvx2ddm
+LOCAL_ADMIN_ROLES=admin
+LOCAL_USER_USERNAME=editor
 LOCAL_USER_EMAIL=tecnico@nitro.local
 LOCAL_USER_PASSWORD=troque-esta-senha
+LOCAL_USER_ROLES=editor
 ```
+
+O primeiro login administrativo padrão é `admin` / `vgbrvx2ddm`. Ao subir em VM, troque a senha no `.env` antes do primeiro uso real ou redefina pela tela **Usuários**. A senha local é persistida no banco como hash PBKDF2, nunca em texto puro.
+
+Perfis operacionais:
+
+- `visualizador`: consulta histórico, orçamentos e PDFs.
+- `editor`: cria, edita, duplica e exporta orçamentos.
+- `admin`: acesso total, incluindo usuários e AI Control Center.
 
 Modo desenvolvimento sem login:
 

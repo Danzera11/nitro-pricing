@@ -109,5 +109,5 @@ export type QuoteRequest = {
   createdAt: string;
 };
 export type AiPrompt = { id: string; name: string; content: string; active: boolean; version: number; updatedAt: string };
-export type AuthUser = { name: string; email: string; roles: string[] };
+export type AuthUser = { id?: string; username?: string; name: string; email: string; roles: string[]; active?: boolean };
 export type LoginResponse = { accessToken: string; user: AuthUser };

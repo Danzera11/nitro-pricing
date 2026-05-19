@@ -10,7 +10,7 @@ export class VariablesController {
   constructor(private readonly crud: CrudService) {}
 
   @Get() findAll() { return this.crud.findMany("variable", { orderBy: { key: "asc" } }); }
-  @Post() @Roles("admin", "gestor") create(@Body() dto: CreateVariableDto, @CurrentUser() user: AuthenticatedUser) { return this.crud.create("variable", dto, user); }
-  @Patch(":id") @Roles("admin", "gestor") update(@Param("id") id: string, @Body() dto: Partial<CreateVariableDto>, @CurrentUser() user: AuthenticatedUser) { return this.crud.update("variable", id, dto, user); }
+  @Post() @Roles("admin") create(@Body() dto: CreateVariableDto, @CurrentUser() user: AuthenticatedUser) { return this.crud.create("variable", dto, user); }
+  @Patch(":id") @Roles("admin") update(@Param("id") id: string, @Body() dto: Partial<CreateVariableDto>, @CurrentUser() user: AuthenticatedUser) { return this.crud.update("variable", id, dto, user); }
   @Delete(":id") @Roles("admin") remove(@Param("id") id: string, @CurrentUser() user: AuthenticatedUser) { return this.crud.remove("variable", id, user); }
 }

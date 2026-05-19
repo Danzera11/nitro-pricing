@@ -8,6 +8,7 @@ import {
   FolderTree,
   LogOut,
   Layers3,
+  ShieldCheck,
   Plus,
   Save,
   Search,
@@ -21,7 +22,7 @@ import {
 import { FormEvent, ReactNode, useEffect, useState } from "react";
 import { api, apiBlob, clearAuthToken, LoginResponse, setAuthToken, AiPrompt, AuthUser, Customer, Group, MaterialKit, Quote, QuoteItem, QuoteMaterial, QuoteRequest, Rule, Service, Unit } from "./lib/api";
 
-type View = "assistant" | "quote" | "control";
+type View = "assistant" | "quote" | "control" | "users";
 type ChatMessage = { role: "assistant" | "user"; text: string };
 
 const starterPrompts = [
@@ -29,6 +30,24 @@ const starterPrompts = [
   "Criar regra: a partir de 20 câmeras sugerir switch PoE e nobreak",
   "Gerar orçamento para manutenção de rede com 12 pontos"
 ];
+
+const roleOptions = [
+  { value: "visualizador", label: "Visualizador" },
+  { value: "editor", label: "Editor" },
+  { value: "admin", label: "Admin" }
+];
+
+function hasRole(user: AuthUser | undefined, roles: string[]) {
+  return Boolean(user?.roles.some((role) => roles.includes(role)));
+}
+
+function canEditQuotes(user?: AuthUser) {
+  return hasRole(user, ["admin", "editor", "tecnico", "comercial", "gestor"]);
+}
+
+function isAdmin(user?: AuthUser) {
+  return hasRole(user, ["admin"]);
+}
 
 export function App() {
   const [view, setView] = useState<View>("assistant");
@@ -69,7 +88,7 @@ export function App() {
   async function handleLogin(email: string, password: string) {
     const result = await api<LoginResponse>("/auth/login", {
       method: "POST",
-      body: JSON.stringify({ email, password })
+      body: JSON.stringify({ login: email, password })
     });
     setAuthToken(result.accessToken);
     setMe(result.user);
@@ -105,6 +124,7 @@ export function App() {
 
     try {
       if (activeQuote && isStatusCommand(text)) {
+        if (!canEditQuotes(me)) throw new Error("Seu perfil permite visualizar orçamentos, mas não alterar status.");
         const status = statusFromText(text);
         const quote = await api<Quote>(`/quotes/${activeQuote.id}/status`, {
           method: "PATCH",
@@ -117,6 +137,7 @@ export function App() {
       }
 
       if (isRuleCommand(text)) {
+        if (!isAdmin(me)) throw new Error("Somente administradores podem criar regras para a IA.");
         const rule = await createRuleFromText(text);
         setMessages((current) => [
           ...current,
@@ -147,6 +168,14 @@ export function App() {
         setMessages((current) => [
           ...current,
           { role: "assistant", text: "Entendi. Para gerar um orçamento, me diga explicitamente o serviço e a quantidade. Exemplo: “orçamento para 20 câmeras IP com cabeamento”." }
+        ]);
+        return;
+      }
+
+      if (!canEditQuotes(me)) {
+        setMessages((current) => [
+          ...current,
+          { role: "assistant", text: "Seu perfil é de visualização. Você pode pesquisar, abrir históricos e exportar PDFs, mas não criar novos orçamentos." }
         ]);
         return;
       }
@@ -294,9 +323,16 @@ export function App() {
           <button className={view === "quote" ? "is-active" : ""} onClick={() => setView("quote")}>
             <Table2 size={16} /> Orçamento
           </button>
-          <button className={view === "control" ? "is-active" : ""} onClick={() => setView("control")}>
-            <Brain size={16} /> AI Control Center
-          </button>
+          {isAdmin(me) && (
+            <>
+              <button className={view === "control" ? "is-active" : ""} onClick={() => setView("control")}>
+                <Brain size={16} /> AI Control Center
+              </button>
+              <button className={view === "users" ? "is-active" : ""} onClick={() => setView("users")}>
+                <ShieldCheck size={16} /> Usuários
+              </button>
+            </>
+          )}
         </nav>
         <div className="session-pill">
           <strong>{me.name}</strong>
@@ -319,9 +355,23 @@ export function App() {
           selectedCustomerId={selectedCustomerId}
           quickClient={quickClient}
           quoteHistory={quoteHistory}
+          canEdit={canEditQuotes(me)}
           onSelectedCustomer={setSelectedCustomerId}
           onQuickClient={setQuickClient}
           onOpenHistory={openQuoteFromHistory}
+          onDuplicateHistory={async (quoteId) => {
+            const duplicated = await api<Quote>(`/quotes/${quoteId}/duplicate`, { method: "POST" });
+            setActiveQuote(duplicated);
+            setActiveRequest(duplicated.request);
+            refreshQuotes();
+            setView("quote");
+          }}
+          onExportHistory={async (quoteId) => {
+            const blob = await apiBlob(`/quotes/${quoteId}/export.pdf`);
+            const url = window.URL.createObjectURL(blob);
+            window.open(url, "_blank", "noopener,noreferrer");
+            window.setTimeout(() => window.URL.revokeObjectURL(url), 60_000);
+          }}
         />
       )}
 
@@ -337,16 +387,19 @@ export function App() {
           }}
           onRefreshQuotes={refreshQuotes}
           onBackToChat={() => setView("assistant")}
+          canEdit={canEditQuotes(me)}
+          canDelete={isAdmin(me)}
         />
       )}
 
-      {view === "control" && <AIControlCenter />}
+      {view === "control" && (isAdmin(me) ? <AIControlCenter /> : <ForbiddenView onBack={() => setView("assistant")} />)}
+      {view === "users" && (isAdmin(me) ? <UsersAdmin /> : <ForbiddenView onBack={() => setView("assistant")} />)}
     </div>
   );
 }
 
-function LoginView({ onLogin }: { onLogin: (email: string, password: string) => Promise<void> }) {
-  const [email, setEmail] = useState("admin@nitro.local");
+function LoginView({ onLogin }: { onLogin: (login: string, password: string) => Promise<void> }) {
+  const [login, setLogin] = useState("admin");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
@@ -356,7 +409,7 @@ function LoginView({ onLogin }: { onLogin: (email: string, password: string) => 
     setBusy(true);
     setError("");
     try {
-      await onLogin(email.trim(), password);
+      await onLogin(login.trim(), password);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Não foi possível entrar.");
     } finally {
@@ -376,8 +429,8 @@ function LoginView({ onLogin }: { onLogin: (email: string, password: string) => 
         <h2>Acessar plataforma</h2>
         <p>Use o usuário local configurado na VM. A autenticação continua preparada para Keycloak/SSO no próximo ciclo.</p>
         <label>
-          <span>E-mail</span>
-          <input type="email" value={email} onChange={(event) => setEmail(event.target.value)} placeholder="admin@nitro.local" autoComplete="username" />
+          <span>Login</span>
+          <input value={login} onChange={(event) => setLogin(event.target.value)} placeholder="admin" autoComplete="username" />
         </label>
         <label>
           <span>Senha</span>
@@ -386,6 +439,137 @@ function LoginView({ onLogin }: { onLogin: (email: string, password: string) => 
         {error && <p className="auth-error">{error}</p>}
         <button className="primary" disabled={busy}>{busy ? "Entrando..." : "Entrar"}</button>
       </form>
+    </main>
+  );
+}
+
+function ForbiddenView({ onBack }: { onBack: () => void }) {
+  return (
+    <main className="workspace narrow">
+      <div className="empty-state">
+        <ShieldCheck size={30} />
+        <h1>Acesso restrito</h1>
+        <p>Este recurso é exclusivo para administradores.</p>
+        <button className="primary" onClick={onBack}>Voltar ao assistente</button>
+      </div>
+    </main>
+  );
+}
+
+function UsersAdmin() {
+  const [users, setUsers] = useState<AuthUser[]>([]);
+  const [selectedId, setSelectedId] = useState<string>();
+  const [form, setForm] = useState({ username: "", name: "", email: "", password: "", roles: ["editor"], active: true });
+
+  useEffect(() => {
+    refresh();
+  }, []);
+
+  async function refresh() {
+    const data = await api<AuthUser[]>("/users");
+    setUsers(data);
+  }
+
+  function edit(user: AuthUser) {
+    setSelectedId(user.id);
+    setForm({
+      username: user.username ?? "",
+      name: user.name,
+      email: user.email,
+      password: "",
+      roles: user.roles.filter((role) => ["admin", "editor", "visualizador"].includes(role)),
+      active: user.active ?? true
+    });
+  }
+
+  function toggleRole(role: string) {
+    setForm((current) => ({
+      ...current,
+      roles: current.roles.includes(role) ? current.roles.filter((item) => item !== role) : [...current.roles, role]
+    }));
+  }
+
+  async function saveUser(event: FormEvent) {
+    event.preventDefault();
+    const payload = {
+      username: form.username,
+      name: form.name,
+      email: form.email,
+      roles: form.roles.length ? form.roles : ["visualizador"],
+      active: form.active
+    };
+    if (selectedId) {
+      await api(`/users/${selectedId}`, { method: "PATCH", body: JSON.stringify(payload) });
+      if (form.password) await api(`/users/${selectedId}/password`, { method: "PATCH", body: JSON.stringify({ password: form.password }) });
+    } else {
+      await api("/users", { method: "POST", body: JSON.stringify({ ...payload, password: form.password }) });
+    }
+    setSelectedId(undefined);
+    setForm({ username: "", name: "", email: "", password: "", roles: ["editor"], active: true });
+    refresh();
+  }
+
+  async function disableUser(user: AuthUser) {
+    if (!user.id) return;
+    await api(`/users/${user.id}`, { method: "PATCH", body: JSON.stringify({ active: !user.active }) });
+    refresh();
+  }
+
+  return (
+    <main className="workspace">
+      <section className="knowledge-hero settings-hero">
+        <div>
+          <span className="eyebrow">Controle de acesso</span>
+          <h1>Usuários e permissões</h1>
+          <p>Gerencie usuários locais para testes internos. A base continua preparada para Keycloak/SSO futuramente.</p>
+        </div>
+      </section>
+      <section className="users-layout">
+        <form className="clean-panel user-form" onSubmit={saveUser}>
+          <div className="section-title">
+            <h2>{selectedId ? "Editar usuário" : "Novo usuário"}</h2>
+            {selectedId && <button type="button" onClick={() => setSelectedId(undefined)}>Limpar</button>}
+          </div>
+          <input placeholder="Login, ex.: admin" value={form.username} onChange={(event) => setForm({ ...form, username: event.target.value })} />
+          <input placeholder="Nome" value={form.name} onChange={(event) => setForm({ ...form, name: event.target.value })} />
+          <input placeholder="E-mail" value={form.email} onChange={(event) => setForm({ ...form, email: event.target.value })} />
+          <input type="password" placeholder={selectedId ? "Nova senha, se quiser redefinir" : "Senha inicial"} value={form.password} onChange={(event) => setForm({ ...form, password: event.target.value })} />
+          <div className="role-picker">
+            {roleOptions.map((role) => (
+              <label key={role.value}>
+                <input type="checkbox" checked={form.roles.includes(role.value)} onChange={() => toggleRole(role.value)} />
+                <span>{role.label}</span>
+              </label>
+            ))}
+          </div>
+          <label className="check-row">
+            <input type="checkbox" checked={form.active} onChange={(event) => setForm({ ...form, active: event.target.checked })} />
+            Usuário ativo
+          </label>
+          <button className="primary">{selectedId ? "Salvar usuário" : "Criar usuário"}</button>
+        </form>
+        <div className="clean-panel">
+          <div className="section-title">
+            <h2>Usuários cadastrados</h2>
+            <span>{users.length} contas</span>
+          </div>
+          <div className="user-list">
+            {users.map((user) => (
+              <article key={user.id}>
+                <div>
+                  <strong>{user.name}</strong>
+                  <span>{user.username} · {user.email}</span>
+                  <em>{user.roles.join(", ")} · {user.active ? "ativo" : "inativo"}</em>
+                </div>
+                <div className="row-actions">
+                  <button onClick={() => edit(user)}>Editar</button>
+                  <button className={user.active ? "danger-button" : ""} onClick={() => disableUser(user)}>{user.active ? "Desativar" : "Ativar"}</button>
+                </div>
+              </article>
+            ))}
+          </div>
+        </div>
+      </section>
     </main>
   );
 }
@@ -403,11 +587,17 @@ function AssistantView(props: {
   selectedCustomerId: string;
   quickClient: { name: string; phone: string; email: string };
   quoteHistory: QuoteRequest[];
+  canEdit: boolean;
   onSelectedCustomer: (id: string) => void;
   onQuickClient: (client: { name: string; phone: string; email: string }) => void;
   onOpenHistory: (request: QuoteRequest) => void;
+  onDuplicateHistory: (quoteId: string) => void;
+  onExportHistory: (quoteId: string) => void;
 }) {
   const [historySearch, setHistorySearch] = useState("");
+  const [historyStatus, setHistoryStatus] = useState("all");
+  const [historySort, setHistorySort] = useState("recent");
+  const [historyPage, setHistoryPage] = useState(0);
   const filteredHistory = props.quoteHistory.filter((request) => {
     const haystack = [
       request.quote?.quoteNumber,
@@ -416,8 +606,16 @@ function AssistantView(props: {
       request.quote?.status,
       request.quote?.totalLaborPrice
     ].join(" ").toLowerCase();
-    return haystack.includes(historySearch.toLowerCase());
+    const matchesSearch = haystack.includes(historySearch.toLowerCase());
+    const matchesStatus = historyStatus === "all" || (request.quote?.status ?? request.status) === historyStatus;
+    return matchesSearch && matchesStatus;
+  }).sort((a, b) => {
+    if (historySort === "value") return Number(b.quote?.totalLaborPrice ?? 0) - Number(a.quote?.totalLaborPrice ?? 0);
+    return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
   });
+  const pageSize = 8;
+  const historyPageCount = Math.max(1, Math.ceil(filteredHistory.length / pageSize));
+  const pageItems = filteredHistory.slice(historyPage * pageSize, historyPage * pageSize + pageSize);
 
   return (
     <main className="assistant-screen">
@@ -496,15 +694,42 @@ function AssistantView(props: {
             <Search size={15} />
             <input placeholder="Buscar orçamento" value={historySearch} onChange={(event) => setHistorySearch(event.target.value)} />
           </label>
+          <div className="history-filters">
+            <select value={historyStatus} onChange={(event) => { setHistoryStatus(event.target.value); setHistoryPage(0); }}>
+              <option value="all">Todos os status</option>
+              <option value="SAVED">Salvos</option>
+              <option value="EDITING">Em edição</option>
+              <option value="EXPORTED">Exportados</option>
+              <option value="AI_GENERATED">Gerados pela IA</option>
+            </select>
+            <select value={historySort} onChange={(event) => setHistorySort(event.target.value)}>
+              <option value="recent">Mais recentes</option>
+              <option value="value">Maior valor</option>
+            </select>
+          </div>
           <div className="history-list">
-            {filteredHistory.slice(0, 10).map((request) => (
-              <button key={request.id} onClick={() => props.onOpenHistory(request)}>
-                <span>{request.quote?.quoteNumber ?? request.title}</span>
-                <strong>{request.customer?.name}</strong>
-                <em>{dateLabel(request.createdAt)} · {request.requestedBy?.name ?? "Equipe Nitro"} · {humanStatus(request.quote?.status ?? request.status)} · {money(request.quote?.totalLaborPrice ?? 0)}</em>
-              </button>
+            {pageItems.map((request) => (
+              <article className="history-card" key={request.id}>
+                <button onClick={() => props.onOpenHistory(request)}>
+                  <span>{request.quote?.quoteNumber ?? request.title}</span>
+                  <strong>{request.customer?.name}</strong>
+                  <em>{dateLabel(request.createdAt)} · {request.requestedBy?.name ?? "Equipe Nitro"} · {humanStatus(request.quote?.status ?? request.status)} · {money(request.quote?.totalLaborPrice ?? 0)}</em>
+                </button>
+                {request.quote && (
+                  <div className="history-actions">
+                    <button onClick={() => props.onOpenHistory(request)}>Abrir</button>
+                    {props.canEdit && <button onClick={() => props.onDuplicateHistory(request.quote!.id)}>Duplicar</button>}
+                    <button onClick={() => props.onExportHistory(request.quote!.id)}>PDF</button>
+                  </div>
+                )}
+              </article>
             ))}
             {!filteredHistory.length && <p>Nenhum orçamento encontrado.</p>}
+          </div>
+          <div className="history-pagination">
+            <button disabled={historyPage === 0} onClick={() => setHistoryPage((page) => Math.max(0, page - 1))}>Anterior</button>
+            <span>{historyPage + 1} / {historyPageCount}</span>
+            <button disabled={historyPage + 1 >= historyPageCount} onClick={() => setHistoryPage((page) => Math.min(historyPageCount - 1, page + 1))}>Próxima</button>
           </div>
         </section>
       </aside>
@@ -519,6 +744,8 @@ function QuoteWorkspace(props: {
   onDeleted: () => void;
   onRefreshQuotes: () => void;
   onBackToChat: () => void;
+  canEdit: boolean;
+  canDelete: boolean;
 }) {
   const [isEditing, setIsEditing] = useState(false);
 
@@ -594,13 +821,13 @@ function QuoteWorkspace(props: {
         </div>
         <div>
           {!isEditing ? (
-            <button className="primary" onClick={() => setStatus("EDITING")}><Edit3 size={16} /> Editar</button>
+            props.canEdit && <button className="primary" onClick={() => setStatus("EDITING")}><Edit3 size={16} /> Editar</button>
           ) : (
             <button className="primary" onClick={() => setStatus("SAVED")}><Save size={16} /> Salvar</button>
           )}
-          <button onClick={duplicateQuote}><Copy size={16} /> Duplicar</button>
+          {props.canEdit && <button onClick={duplicateQuote}><Copy size={16} /> Duplicar</button>}
           <button onClick={exportPdf}><Download size={16} /> PDF</button>
-          <button className="danger-button" onClick={deleteQuote}><Trash2 size={16} /> Excluir</button>
+          {props.canDelete && <button className="danger-button" onClick={deleteQuote}><Trash2 size={16} /> Excluir</button>}
         </div>
       </section>
 
