@@ -164,10 +164,15 @@ export function App() {
         return;
       }
 
+      if (activeQuote && isQuoteReviewQuestion(text)) {
+        setMessages((current) => [...current, { role: "assistant", text: answerQuoteReviewQuestion(text, activeQuote) }]);
+        return;
+      }
+
       if (!isQuoteRequest(text)) {
         setMessages((current) => [
           ...current,
-          { role: "assistant", text: "Entendi. Para gerar um orçamento, me diga explicitamente o serviço e a quantidade. Exemplo: “orçamento para 20 câmeras IP com cabeamento”." }
+          { role: "assistant", text: "Entendi. Posso ajustar ou explicar o orçamento aberto, ou gerar um novo orçamento se você descrever o serviço e a quantidade." }
         ]);
         return;
       }
@@ -205,16 +210,16 @@ export function App() {
   async function generateQuoteFromText(text: string) {
     const customer = await resolveCustomer();
     if (!customer) throw new Error("Cadastre um cliente antes de gerar o primeiro orçamento.");
-    const cameraQuantity = extractQuantity(text, /(camera|câmera|cameras|câmeras)/i) ?? 8;
-    const networkPoints = extractQuantity(text, /(ponto|pontos|rede|cabeamento)/i) ?? cameraQuantity;
+    const cameraQuantity = extractQuantity(text, /(camera|câmera|cameras|câmeras|cftv)/i) ?? 0;
+    const networkPoints = extractQuantity(text, /(ponto|pontos|rede|cabeamento|utp|cat6)/i) ?? 0;
     const apQuantity = extractQuantity(text, /(access point|\bap\b|wi-?fi|wifi)/i) ?? (/access point|\bap\b|wi-?fi|wifi/i.test(text) ? 1 : 0);
-    const fiberMeters = extractQuantity(text, /(fibra|óptico|optico)/i) ?? 0;
+    const fiberMeters = extractQuantity(text, /(fibra|óptico|optico|metros|metro|m\b)/i) ?? 0;
     const alarmSensors = extractQuantity(text, /(sensor|alarme|sirene)/i) ?? 0;
     const request = await api<QuoteRequest>("/quote-requests", {
       method: "POST",
       body: JSON.stringify({
         customerId: customer.id,
-        title: titleFromText(text, cameraQuantity),
+        title: titleFromText(text, { cameras: cameraQuantity, fiberMeters, networkPoints, apQuantity, alarmSensors }),
         description: text,
         inputVariables: {
           camera_quantity: cameraQuantity,
@@ -1712,13 +1717,20 @@ function InfoList({ title, items }: { title: string; items: string[] }) {
 
 function extractQuantity(text: string, nearby: RegExp) {
   const matches = [...text.matchAll(/(\d+)/g)];
-  const hasContext = nearby.test(text);
-  if (!hasContext || !matches.length) return undefined;
-  return Number(matches[0][1]);
+  for (const match of matches) {
+    const index = match.index ?? 0;
+    const windowText = text.slice(Math.max(0, index - 32), Math.min(text.length, index + 48));
+    if (nearby.test(windowText)) return Number(match[1]);
+  }
+  return undefined;
 }
 
-function titleFromText(text: string, cameras: number) {
-  if (/camera|câmera/i.test(text)) return `Orçamento para ${cameras} câmeras`;
+function titleFromText(text: string, quantities: { cameras: number; fiberMeters: number; networkPoints: number; apQuantity: number; alarmSensors: number }) {
+  if (/fibra|óptico|optico/i.test(text)) return `Orçamento para ${quantities.fiberMeters || "link de"} metros de fibra`;
+  if (/camera|câmera/i.test(text)) return `Orçamento para ${quantities.cameras} câmeras`;
+  if (/access point|\bap\b|wi-?fi|wifi/i.test(text)) return `Orçamento para ${quantities.apQuantity || "instalação de"} access points`;
+  if (/sensor|alarme|sirene/i.test(text)) return `Orçamento para ${quantities.alarmSensors || "sistema de"} alarme`;
+  if (/ponto|pontos|rede|cabeamento/i.test(text)) return `Orçamento para ${quantities.networkPoints || "serviço de"} pontos de rede`;
   return text.slice(0, 64);
 }
 
@@ -1736,6 +1748,21 @@ function isGreeting(text: string) {
 
 function isSystemQuestion(text: string) {
   return /(quais|listar|mostrar|minhas|meus|ver).*(regras|unidades|itens|serviços|servicos|kits|materiais)|como.*config/i.test(text);
+}
+
+function isQuoteReviewQuestion(text: string) {
+  return /(por que|porque|pq|explique|corrigir|ajustar|não tem|nao tem|errado|recomendou|remove|remover|trocar).*(orçamento|orcamento|item|serviço|servico|material|camera|câmera|utp|fibra|valor)?/i.test(text);
+}
+
+function answerQuoteReviewQuestion(text: string, quote: Quote) {
+  const lower = text.toLowerCase();
+  const services = quote.items.map((item) => `${item.groupCode} - ${item.serviceName}`).join(", ");
+  const hasCamera = quote.items.some((item) => /camera|câmera|cftv/i.test(`${item.groupCode} ${item.serviceName}`)) || quote.suggestedMaterials.some((item) => /camera|câmera|nvr/i.test(item.name));
+  const hasUtp = quote.items.some((item) => /utp|cabeamento/i.test(`${item.groupCode} ${item.serviceName}`)) || quote.suggestedMaterials.some((item) => /utp|rj45/i.test(item.name));
+  if (/camera|câmera|cftv|utp/i.test(lower) && /fibra|óptico|optico/i.test(`${quote.scopeSummary ?? ""} ${lower}`) && (hasCamera || hasUtp)) {
+    return `Você tem razão. Esse orçamento contém itens que não combinam com o escopo de fibra: ${services}. Para esse caso, o correto é trabalhar com lançamento de fibra óptica por metro, fusões/terminações e validação/organização do enlace. Entre em modo edição para remover os itens indevidos ou gere novamente com: "orçamento para lançamento de 300 metros de fibra óptica entre dois racks".`;
+  }
+  return `O orçamento aberto tem estes serviços: ${services}. Se algum item não fizer sentido, clique em Editar para remover/ajustar; as correções viram sugestões pendentes para o admin aprovar no Aprendizado da IA.`;
 }
 
 function isQuoteRequest(text: string) {

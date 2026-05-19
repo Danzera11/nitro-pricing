@@ -251,23 +251,45 @@ export class AiService {
     ruleNotes: string[];
     approvedLearning?: LearningContext;
   }): AiQuoteDraft {
-    const cameras = Number(input.inputVariables.camera_quantity ?? 4);
-    const networkPoints = Number(input.inputVariables.network_points ?? cameras);
-    const cftv = input.services.find((service) => service.group.code === "CFTV");
-    const cabling = input.services.find((service) => service.group.code === "CABEAMENTO");
-    const rack = input.services.find((service) => service.group.code === "RACK");
-    const items = [
-      this.item(cftv, cameras, "Instalacao e alinhamento de cameras IP conforme escopo informado."),
-      this.item(cabling, Math.max(networkPoints, cameras), "Lancamento e organizacao de pontos de rede para CFTV."),
-      ...(cameras > 8 && rack ? [this.item(rack, 4, "Organizacao de rack tecnico, patching e acomodacao dos equipamentos.")] : [])
-    ];
+    const description = input.description.toLowerCase();
+    const cameras = Number(input.inputVariables.camera_quantity ?? 0);
+    const networkPoints = Number(input.inputVariables.network_points ?? 0);
+    const fiberMeters = Number(input.inputVariables.fiber_meters ?? 0);
+    const apQuantity = Number(input.inputVariables.ap_quantity ?? 0);
+    const alarmSensors = Number(input.inputVariables.alarm_sensor_quantity ?? 0);
+    const isFiberScope = fiberMeters > 0 || /fibra|optica|óptica|fus[aã]o|dio|rack.*rack|hack.*hack/.test(description);
+    const isCameraScope = cameras > 0 || /camera|c[aâ]mera|cftv|nvr/.test(description);
+    const isApScope = apQuantity > 0 || /access point|\bap\b|wi-?fi|wifi/.test(description);
+    const isAlarmScope = alarmSensors > 0 || /alarme|sensor|sirene/.test(description);
+    const isNetworkScope = networkPoints > 0 || /ponto|rede|cabeamento|utp|cat6/.test(description);
+    const items = this.buildMockItems({
+      services: input.services,
+      cameras,
+      networkPoints,
+      fiberMeters,
+      apQuantity,
+      alarmSensors,
+      isFiberScope,
+      isCameraScope,
+      isApScope,
+      isAlarmScope,
+      isNetworkScope,
+      workAtHeight: Boolean(input.inputVariables.work_at_height)
+    });
+    const suggestedMaterials = this.materialSuggestionsForScope(input.materials, {
+      isFiberScope,
+      isCameraScope,
+      isApScope,
+      isAlarmScope,
+      isNetworkScope
+    });
     return {
       scope_summary: `Orcamento preliminar de mao de obra para ${input.description}. Estimativa baseada nas variaveis cadastradas e regras internas.`,
       quote_items: items,
-      suggested_materials: [...new Set(["Camera IP", "Cabo UTP", "Conectores RJ45", ...input.materials.filter((name) => cameras > 8 || !["Rack", "Switch", "Patch Panel", "Nobreak"].includes(name))])],
+      suggested_materials: suggestedMaterials,
       assumptions: [
         "Infraestrutura existente permite passagem de cabos sem obra civil pesada.",
-        "Materiais serao precificados fora deste MVP.",
+        "Materiais sao apenas sugestoes quantitativas e nao entram no total financeiro.",
         ...(input.approvedLearning?.slice(0, 4).map((item) => `Aprendizado aprovado: ${item.title} - ${item.content}`) ?? []),
         ...input.ruleNotes
       ],
@@ -280,8 +302,68 @@ export class AiService {
         "Ha rack existente e energia estabilizada no local?",
         "O trabalho sera feito em horario comercial ou janela especial?"
       ],
-      confidence_level: cameras > 8 ? "medium" : "high"
+      confidence_level: isFiberScope || items.length > 1 ? "medium" : "high"
     };
+  }
+
+  private buildMockItems(input: {
+    services: ServiceContext;
+    cameras: number;
+    networkPoints: number;
+    fiberMeters: number;
+    apQuantity: number;
+    alarmSensors: number;
+    isFiberScope: boolean;
+    isCameraScope: boolean;
+    isApScope: boolean;
+    isAlarmScope: boolean;
+    isNetworkScope: boolean;
+    workAtHeight: boolean;
+  }) {
+    const items = [];
+    if (input.isFiberScope) {
+      items.push(this.item(this.findService(input.services, "FIBRA", /lancamento|lançamento|fibra/i), input.fiberMeters || 1, "Lancamento de fibra optica entre racks/pontos da estrutura do cliente."));
+      items.push(this.item(this.findService(input.services, "FIBRA", /fus[aã]o|optica|óptica/i), 2, "Fusoes e terminacoes opticas minimas para interligacao entre as duas pontas."));
+      const validation = this.findService(input.services, "FIBRA", /validacao|valida[cç][aã]o|teste/i);
+      if (validation) items.push(this.item(validation, 1, "Validacao, identificacao e organizacao do enlace optico."));
+    }
+    if (input.isCameraScope) {
+      const cameras = input.cameras || 1;
+      items.push(this.item(this.findService(input.services, "CFTV", /camera|c[aâ]mera/i), cameras, "Instalacao e alinhamento de cameras IP conforme escopo informado."));
+      if (cameras > 8) items.push(this.item(this.findService(input.services, "RACK", /organizacao|organiza[cç][aã]o|rack/i), 4, "Organizacao de rack tecnico, patching e acomodacao dos equipamentos."));
+    }
+    if (input.isApScope) {
+      items.push(this.item(this.findService(input.services, "REDE", /access point|\bap\b/i), input.apQuantity || 1, "Instalacao, fixacao e configuracao de access point."));
+    }
+    if (input.isAlarmScope) {
+      items.push(this.item(this.findService(input.services, "ALARME", /sensor|alarme/i), input.alarmSensors || 1, "Instalacao de sensores/perifericos de alarme conforme escopo."));
+    }
+    if (input.isNetworkScope && !input.isFiberScope && !input.isCameraScope) {
+      items.push(this.item(this.findService(input.services, "CABEAMENTO", /lancamento|lançamento|cabo/i), input.networkPoints || 1, "Lancamento e organizacao de cabeamento estruturado conforme pontos informados."));
+    }
+    if (input.workAtHeight) {
+      const height = this.findService(input.services, "INFRA_EXTERNA", /altura|pta|plataforma/i);
+      if (height) items.push(this.item(height, 1, "Premissa operacional para trabalho em altura ou apoio com plataforma."));
+    }
+    if (!items.length) {
+      items.push(this.item(this.findService(input.services, "MANUTENCAO", /visita|tecnica|técnica/i), 1, "Atendimento tecnico estimado para levantamento e execucao conforme escopo informado."));
+    }
+    return items;
+  }
+
+  private findService(services: ServiceContext, groupCode: string, namePattern: RegExp) {
+    return services.find((service) => service.group.code === groupCode && namePattern.test(service.name)) ?? services.find((service) => service.group.code === groupCode);
+  }
+
+  private materialSuggestionsForScope(materials: string[], scope: { isFiberScope: boolean; isCameraScope: boolean; isApScope: boolean; isAlarmScope: boolean; isNetworkScope: boolean }) {
+    const allowed = materials.filter((name) => {
+      if (scope.isFiberScope) return /fibra|optico|óptico|dio|cordao|cordão|terminacao|terminação/i.test(name);
+      if (scope.isCameraScope) return /camera|c[aâ]mera|nvr|fonte|caixa|bucha|rack|switch|patch|nobreak|rj45/i.test(name);
+      if (scope.isApScope || scope.isNetworkScope) return /access point|cabo utp|rj45|patch|switch|rack/i.test(name);
+      if (scope.isAlarmScope) return /sensor|sirene|alarme/i.test(name);
+      return false;
+    });
+    return [...new Set(allowed)];
   }
 
   private item(service: { name: string; unit: string; baseLaborPrice: Prisma.Decimal; group: { code: string } } | undefined, quantity: number, description: string) {
@@ -388,7 +470,7 @@ export class AiService {
     for (const quoteItem of draft.quote_items) {
       const matchingKits = kits.filter((kit) => {
         const serviceMatches = kit.service?.name && kit.service.name.toLowerCase() === quoteItem.service.toLowerCase();
-        const groupMatches = kit.group?.code && kit.group.code === quoteItem.group;
+        const groupMatches = !kit.service?.name && kit.group?.code && kit.group.code === quoteItem.group;
         return serviceMatches || groupMatches;
       });
       for (const kit of matchingKits) {
@@ -396,7 +478,7 @@ export class AiService {
         for (const material of kitItems) {
           if (!material.material) continue;
           const perService = Number(material.quantity_per_service ?? this.quantityFromFormula(material.quantity_formula) ?? 1);
-          const quantity = Number(quoteItem.quantity) * perService;
+          const quantity = this.materialQuantityForKitItem(quoteItem, material.unit ?? "unidade", perService);
           const key = `${material.material}:${material.unit ?? "unidade"}`;
           const current = totals.get(key) ?? {
             id: this.materialId(material.material, material.unit ?? "unidade"),
@@ -435,6 +517,13 @@ export class AiService {
 
   private materialId(name: string, unit: string) {
     return `mat-${Buffer.from(`${name}-${unit}`).toString("base64url").slice(0, 16).toLowerCase()}`;
+  }
+
+  private materialQuantityForKitItem(quoteItem: AiQuoteDraft["quote_items"][number], materialUnit: string, perService: number) {
+    const quoteUnit = String(quoteItem.unit ?? "").toLowerCase();
+    const kitUnit = materialUnit.toLowerCase();
+    if (quoteUnit === "metro" && kitUnit !== "metro") return perService;
+    return Number(quoteItem.quantity) * perService;
   }
 
   private quantityFromFormula(formula?: string) {
