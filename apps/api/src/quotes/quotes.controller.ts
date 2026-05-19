@@ -112,13 +112,15 @@ export class QuotesController {
   }
 
   @Get(":id/export.pdf")
-  @Roles("admin", "tecnico", "comercial", "gestor")
-  async exportPdf(@Param("id") id: string, @Res() response: Response) {
+  @Roles("admin", "editor", "visualizador", "tecnico", "comercial", "gestor")
+  async exportPdf(@Param("id") id: string, @CurrentUser() user: AuthenticatedUser, @Res() response: Response) {
     const quote = await this.prisma.quote.findUniqueOrThrow({
       where: { id },
       include: { request: { include: { customer: true, requestedBy: true } }, items: { orderBy: { sortOrder: "asc" } } }
     });
-    await this.prisma.quote.update({ where: { id }, data: { status: "EXPORTED", exportedAt: new Date() } });
+    if (this.canMarkExported(user)) {
+      await this.prisma.quote.update({ where: { id }, data: { status: "EXPORTED", exportedAt: new Date() } });
+    }
     const pdf = this.buildSimplePdf(quote);
     response.setHeader("Content-Type", "application/pdf");
     response.setHeader("Content-Disposition", `attachment; filename=\"nitro-pricing-${quote.quoteNumber ?? id}.pdf\"`);
@@ -255,6 +257,10 @@ export class QuotesController {
     const end = new Date(year + 1, 0, 1);
     const count = await this.prisma.quote.count({ where: { createdAt: { gte: start, lt: end } } });
     return `NP-${year}-${String(count + 1).padStart(4, "0")}`;
+  }
+
+  private canMarkExported(user: AuthenticatedUser) {
+    return user.roles.some((role) => ["admin", "editor", "tecnico", "comercial", "gestor"].includes(role));
   }
 
   private normalizeMaterials(value: Prisma.JsonValue): QuoteMaterialRecord[] {
