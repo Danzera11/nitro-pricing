@@ -23,6 +23,10 @@ class CreateUserDto {
 
   @IsArray()
   roles!: UserRole[];
+
+  @IsOptional()
+  @IsBoolean()
+  active?: boolean;
 }
 
 class UpdateUserDto {
@@ -73,7 +77,7 @@ export class UsersController {
         name: dto.name,
         roles: this.normalizeRoles(dto.roles),
         passwordHash: this.auth.hashPassword(dto.password),
-        active: true
+        active: dto.active ?? true
       },
       select: { id: true, username: true, email: true, name: true, roles: true, active: true, createdAt: true, updatedAt: true }
     });
